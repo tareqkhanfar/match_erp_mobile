@@ -348,3 +348,133 @@ def get_price_lists(**kwargs):
 		en="Price lists synced",
 		ar="تمت مزامنة قوائم الأسعار",
 	)
+
+
+# ---------------------------------------------------------------------------
+# Item Groups (category tree)
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+@mobile_endpoint
+def get_item_groups(**kwargs):
+	modified_after, limit, _body = _parse_sync_args()
+	fields = [
+		"name",
+		"item_group_name",
+		"parent_item_group",
+		"is_group",
+		"image",
+		"modified",
+	]
+	rows, has_more, next_cursor = _fetch("Item Group", fields, modified_after, limit)
+	return ok(
+		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
+		en="Item groups synced",
+		ar="تمت مزامنة مجموعات الأصناف",
+	)
+
+
+# ---------------------------------------------------------------------------
+# Modes of Payment (small table — still cursor-paginated for consistency)
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+@mobile_endpoint
+def get_modes_of_payment(**kwargs):
+	modified_after, limit, _body = _parse_sync_args()
+	fields = ["name", "mode_of_payment", "type", "enabled", "modified"]
+	rows, has_more, next_cursor = _fetch(
+		"Mode of Payment", fields, modified_after, limit
+	)
+
+	# Client expects `mode_name`; ERPNext field is `mode_of_payment`. Alias.
+	for r in rows:
+		r["mode_name"] = r.pop("mode_of_payment", None) or r.get("name")
+		# default_account lives in the Mode of Payment Account child table,
+		# keyed per company. Without a company hint we return the first one;
+		# clients that need per-company defaults should filter locally.
+		default_account = frappe.db.get_value(
+			"Mode of Payment Account",
+			{"parent": r["name"]},
+			"default_account",
+		)
+		r["default_account"] = default_account
+
+	return ok(
+		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
+		en="Modes of payment synced",
+		ar="تمت مزامنة وسائل الدفع",
+	)
+
+
+# ---------------------------------------------------------------------------
+# Suppliers
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+@mobile_endpoint
+def get_suppliers(**kwargs):
+	modified_after, limit, _body = _parse_sync_args()
+
+	fields = [
+		"name",
+		"supplier_name",
+		"supplier_group",
+		"country",
+		"mobile_no",
+		"email_id",
+		"disabled",
+		"default_price_list",
+		"default_currency",
+		"modified",
+	]
+	# Guard columns that may not exist on all ERPNext schemas.
+	for col in ("mobile_no", "email_id"):
+		if not frappe.db.has_column("Supplier", col):
+			fields.remove(col)
+
+	rows, has_more, next_cursor = _fetch("Supplier", fields, modified_after, limit)
+
+	for r in rows:
+		r.setdefault("mobile_no", None)
+		r.setdefault("email_id", None)
+		r["outstanding_amount"] = _supplier_outstanding(r["name"])
+
+	return ok(
+		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
+		en="Suppliers synced",
+		ar="تمت مزامنة الموردين",
+	)
+
+
+def _supplier_outstanding(supplier: str) -> float:
+	val = frappe.db.sql(
+		"""
+		SELECT COALESCE(SUM(outstanding_amount), 0)
+		FROM `tabPurchase Invoice`
+		WHERE supplier = %s AND docstatus = 1 AND outstanding_amount > 0
+		""",
+		(supplier,),
+	)
+	return float(val[0][0]) if val and val[0] and val[0][0] is not None else 0.0
+
+
+# ---------------------------------------------------------------------------
+# Warehouses
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+@mobile_endpoint
+def get_warehouses(**kwargs):
+	modified_after, limit, _body = _parse_sync_args()
+	fields = [
+		"name",
+		"warehouse_name",
+		"parent_warehouse",
+		"is_group",
+		"company",
+		"disabled",
+		"modified",
+	]
+	rows, has_more, next_cursor = _fetch("Warehouse", fields, modified_after, limit)
+	return ok(
+		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
+		en="Warehouses synced",
+		ar="تمت مزامنة المستودعات",
+	)

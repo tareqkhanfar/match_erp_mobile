@@ -16,6 +16,9 @@ fixtures = [
 				[
 					"Sales Order-custom_mobile_local_id",
 					"Sales Invoice-custom_mobile_local_id",
+					"Purchase Order-custom_mobile_local_id",
+					"Purchase Invoice-custom_mobile_local_id",
+					"Payment Entry-custom_mobile_local_id",
 				],
 			]
 		],
