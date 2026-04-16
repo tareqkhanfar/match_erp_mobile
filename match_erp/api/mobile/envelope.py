@@ -166,9 +166,14 @@ def mobile_endpoint(fn):
 	since we want JSON even on auth failure).
 	"""
 
+	# Keys Frappe injects into every whitelisted call — strip before forwarding.
+	_FRAPPE_INTERNAL_KEYS = frozenset({"cmd", "sid", "csrf_token", "type", "http_status_code"})
+
 	def wrapper(*args, **kwargs):
+		# Drop Frappe's routing/session keys so they don't bleed into fn().
+		clean_kwargs = {k: v for k, v in kwargs.items() if k not in _FRAPPE_INTERNAL_KEYS}
 		try:
-			return fn(*args, **kwargs)
+			return fn(*args, **clean_kwargs)
 		except frappe.ValidationError as e:
 			en = str(e) or "Validation error"
 			frappe.log_error(
