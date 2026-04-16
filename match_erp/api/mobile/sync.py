@@ -103,7 +103,7 @@ def _fetch(
 # ---------------------------------------------------------------------------
 @frappe.whitelist()
 @mobile_endpoint
-def get_customers():
+def get_customers(**kwargs):
 	modified_after, limit, _body = _parse_sync_args()
 
 	fields = [
@@ -169,7 +169,7 @@ def _customer_outstanding(customer: str) -> float:
 # ---------------------------------------------------------------------------
 @frappe.whitelist()
 @mobile_endpoint
-def get_items():
+def get_items(**kwargs):
 	modified_after, limit, body = _parse_sync_args()
 	price_list: str | None = body.get("price_list") or None
 	warehouse: str | None = body.get("warehouse") or None
@@ -264,7 +264,7 @@ def get_items():
 # ---------------------------------------------------------------------------
 @frappe.whitelist()
 @mobile_endpoint
-def get_item_barcodes():
+def get_item_barcodes(**kwargs):
 	modified_after, limit, _body = _parse_sync_args()
 
 	where = ""
@@ -315,7 +315,7 @@ def get_item_barcodes():
 # ---------------------------------------------------------------------------
 @frappe.whitelist()
 @mobile_endpoint
-def get_uoms():
+def get_uoms(**kwargs):
 	modified_after, limit, _body = _parse_sync_args()
 	fields = ["name", "uom_name", "enabled", "modified"]
 	rows, has_more, next_cursor = _fetch("UOM", fields, modified_after, limit)
@@ -331,7 +331,7 @@ def get_uoms():
 # ---------------------------------------------------------------------------
 @frappe.whitelist()
 @mobile_endpoint
-def get_price_lists():
+def get_price_lists(**kwargs):
 	modified_after, limit, _body = _parse_sync_args()
 	fields = [
 		"name",

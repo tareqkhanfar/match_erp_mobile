@@ -9,7 +9,7 @@ from match_erp.api.mobile.envelope import mobile_endpoint, ok, parse_body
 
 @frappe.whitelist()
 @mobile_endpoint
-def get_companies():
+def get_companies(**kwargs):
 	body = parse_body()
 	limit = int(body.get("limit") or 20)
 	if limit < 1:

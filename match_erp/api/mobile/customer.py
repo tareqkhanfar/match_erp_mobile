@@ -13,7 +13,7 @@ from match_erp.api.mobile.envelope import fail, mobile_endpoint, ok, parse_body
 
 @frappe.whitelist()
 @mobile_endpoint
-def create():
+def create(**kwargs):
 	body = parse_body()
 	if not body.get("customer_name"):
 		return fail("customer_name is required", "اسم العميل مطلوب")
@@ -26,7 +26,7 @@ def create():
 
 @frappe.whitelist()
 @mobile_endpoint
-def update():
+def update(**kwargs):
 	body = parse_body()
 	name = body.get("name")
 	data = body.get("data") or {}

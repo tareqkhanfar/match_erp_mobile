@@ -125,10 +125,21 @@ def translate_error(en_message: str) -> str:
 def parse_body() -> dict:
 	"""Parse the request body as JSON.
 
-	The mobile client always sends Content-Type: application/json. We also
-	accept form-encoded args as a fallback so endpoints are testable from
-	the Frappe desk / curl without a body.
+	Frappe v15 parses JSON bodies and populates frappe.form_dict with the
+	decoded keys — so form_dict is the authoritative source for both
+	Content-Type: application/json and form-encoded requests.
+
+	We also try the raw request.data directly (for cases where form_dict
+	hasn't been populated yet, e.g. bench execute).
 	"""
+	# Primary: frappe.form_dict is populated by Frappe for every request type
+	# including JSON bodies (Frappe decodes JSON → form_dict automatically).
+	form = getattr(frappe, "form_dict", {}) or {}
+	result = {k: v for k, v in form.items() if k not in ("cmd", "data")}
+	if result:
+		return result
+
+	# Fallback: raw request body (bench execute / curl with explicit JSON)
 	raw = getattr(frappe.request, "data", None) if getattr(frappe, "request", None) else None
 	if raw:
 		try:
@@ -139,10 +150,8 @@ def parse_body() -> dict:
 				return data
 		except (json.JSONDecodeError, ValueError):
 			pass
-	# Fallback to form args
-	form = getattr(frappe, "form_dict", {}) or {}
-	# frappe.form_dict is a frappe._dict; strip the `cmd` key that Frappe injects
-	return {k: v for k, v in form.items() if k != "cmd"}
+
+	return {}
 
 
 # ---------------------------------------------------------------------------

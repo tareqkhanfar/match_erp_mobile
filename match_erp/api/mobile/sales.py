@@ -153,11 +153,11 @@ def _create_sales_doc(doctype: str) -> dict:
 
 @frappe.whitelist()
 @mobile_endpoint
-def create_sales_order():
+def create_sales_order(**kwargs):
 	return _create_sales_doc("Sales Order")
 
 
 @frappe.whitelist()
 @mobile_endpoint
-def create_sales_invoice():
+def create_sales_invoice(**kwargs):
 	return _create_sales_doc("Sales Invoice")

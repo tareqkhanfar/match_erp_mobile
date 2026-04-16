@@ -35,10 +35,14 @@ def _user_info(user: str) -> dict:
 
 @frappe.whitelist(allow_guest=True)
 @mobile_endpoint
-def login():
-	body = parse_body()
-	usr = (body.get("usr") or "").strip()
-	pwd = body.get("pwd") or ""
+def login(usr: str = "", pwd: str = ""):
+	# Frappe injects JSON body keys as kwargs; parse_body() is a fallback for
+	# bench execute / curl with form-encoded bodies.
+	if not usr or not pwd:
+		body = parse_body()
+		usr = (body.get("usr") or usr or "").strip()
+		pwd = body.get("pwd") or pwd or ""
+	usr = (usr or "").strip()
 	if not usr or not pwd:
 		return fail(
 			"Username and password are required",
@@ -66,7 +70,7 @@ def login():
 
 @frappe.whitelist()
 @mobile_endpoint
-def logout():
+def logout(**kwargs):
 	if getattr(frappe.local, "login_manager", None):
 		frappe.local.login_manager.logout()
 	else:
@@ -77,7 +81,7 @@ def logout():
 
 @frappe.whitelist()
 @mobile_endpoint
-def get_current_user_info():
+def get_current_user_info(**kwargs):
 	user = frappe.session.user
 	if not user or user == "Guest":
 		return fail(
