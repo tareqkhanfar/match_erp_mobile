@@ -125,7 +125,7 @@ def _validate_payload(payload: dict, doctype: str, is_return: bool) -> tuple[boo
 	return True, "", ""
 
 
-def _build_items(items_payload: list[dict]) -> list[dict]:
+def _build_items(items_payload: list[dict], schedule_date: str | None = None) -> list[dict]:
 	rows = []
 	for line in items_payload:
 		row = {
@@ -142,6 +142,13 @@ def _build_items(items_payload: list[dict]) -> list[dict]:
 				row["conversion_factor"] = float(cf) or 1.0
 			except (TypeError, ValueError):
 				row["conversion_factor"] = 1.0
+		# Sales Order lines need `delivery_date`; Purchase Order lines need
+		# `schedule_date`. Fall back to the header-level value if the line
+		# doesn't supply its own.
+		line_date = line.get("delivery_date") or line.get("schedule_date") or schedule_date
+		if line_date:
+			row["delivery_date"] = line_date
+			row["schedule_date"] = line_date
 		rows.append(row)
 	return rows
 
@@ -171,11 +178,20 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 
 	# --- Party mapping ------------------------------------------------------
 	party = payload.get("party") or payload.get("customer") or payload.get("supplier")
+
+	# Sales Order needs `delivery_date`, Purchase Order needs `schedule_date`.
+	# Fall back to posting_date if the client didn't send a specific value.
+	header_schedule_date = (
+		payload.get("delivery_date")
+		or payload.get("schedule_date")
+		or payload.get("posting_date")
+	)
+
 	doc_data: dict = {
 		"doctype": doctype,
 		"company": payload["company"],
 		"currency": payload.get("currency"),
-		"items": _build_items(payload.get("items") or []),
+		"items": _build_items(payload.get("items") or [], schedule_date=header_schedule_date),
 		"custom_mobile_local_id": local_id,
 	}
 
@@ -215,6 +231,14 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 			doc_data["transaction_date"] = posting_date
 		else:
 			doc_data["posting_date"] = posting_date
+
+	# Sales Order wants `delivery_date` on the header; Purchase Order wants
+	# `schedule_date`. Both default to posting_date/delivery_date/schedule_date
+	# as sent in the payload.
+	if doctype == "Sales Order":
+		doc_data["delivery_date"] = header_schedule_date
+	elif doctype == "Purchase Order":
+		doc_data["schedule_date"] = header_schedule_date
 
 	# --- is_paid on invoices -----------------------------------------------
 	if doctype in INVOICE_DOCTYPES and payload.get("is_paid"):
