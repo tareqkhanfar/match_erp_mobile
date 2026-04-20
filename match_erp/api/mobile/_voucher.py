@@ -267,15 +267,15 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 				{"parent": mop, "company": doc.company},
 				"default_account",
 			)
-			pe = frappe.get_doc({
+			is_sales = doctype == "Sales Invoice"
+			pe_data = {
 				"doctype": "Payment Entry",
-				"payment_type": "Receive" if doctype == "Sales Invoice" else "Pay",
+				"payment_type": "Receive" if is_sales else "Pay",
 				"posting_date": doc.posting_date or frappe.utils.today(),
 				"company": doc.company,
 				"mode_of_payment": mop,
-				"paid_to": bank_account,
-				"party_type": "Customer" if doctype == "Sales Invoice" else "Supplier",
-				"party": doc.customer if doctype == "Sales Invoice" else doc.supplier,
+				"party_type": "Customer" if is_sales else "Supplier",
+				"party": doc.customer if is_sales else doc.supplier,
 				"paid_amount": doc.grand_total,
 				"received_amount": doc.grand_total,
 				"references": [{
@@ -285,7 +285,14 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 				}],
 				"reference_no": doc.name,
 				"reference_date": doc.posting_date or frappe.utils.today(),
-			})
+			}
+			# Sales Invoice → money flows INTO a bank/cash account (paid_to).
+			# Purchase Invoice → money flows OUT of a bank/cash account (paid_from).
+			if is_sales:
+				pe_data["paid_to"] = bank_account
+			else:
+				pe_data["paid_from"] = bank_account
+			pe = frappe.get_doc(pe_data)
 			pe.insert(ignore_permissions=True)
 			pe.submit()
 		except Exception as pe_err:
