@@ -240,25 +240,6 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 	elif doctype == "Purchase Order":
 		doc_data["schedule_date"] = header_schedule_date
 
-	# --- is_paid on invoices -----------------------------------------------
-	# ERPNext Sales/Purchase Invoice marks payment via the `payments` child
-	# table — setting is_paid=1 alone has no effect. We add one payment row
-	# for the full outstanding amount (0 at insert time; ERPNext fills it in
-	# during submit/save via its payment logic).
-	if doctype in INVOICE_DOCTYPES and payload.get("is_paid"):
-		doc_data["is_paid"] = 1
-		mop = payload["mode_of_payment"]
-		doc_data["mode_of_payment"] = mop
-		# Populate the payments table so ERPNext knows which MOP was used.
-		# `amount` is intentionally left at 0 here — ERPNext sets it to the
-		# outstanding amount automatically during save/submit.
-		doc_data["payments"] = [
-			{
-				"mode_of_payment": mop,
-				"amount": 0,
-			}
-		]
-
 	# --- Return handling ----------------------------------------------------
 	if is_return:
 		doc_data["is_return"] = 1
@@ -267,6 +248,19 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 	# --- Create -------------------------------------------------------------
 	doc = frappe.get_doc(doc_data)
 	doc.insert(ignore_permissions=False)
+
+	# --- is_paid on invoices -----------------------------------------------
+	# Must be done AFTER insert so grand_total is calculated by ERPNext.
+	# We then add one payments row for the full grand_total and re-save.
+	if doctype in INVOICE_DOCTYPES and payload.get("is_paid"):
+		mop = payload["mode_of_payment"]
+		doc.is_paid = 1
+		doc.mode_of_payment = mop
+		doc.append("payments", {
+			"mode_of_payment": mop,
+			"amount": doc.grand_total or 0,
+		})
+		doc.save(ignore_permissions=True)
 
 	if frappe.has_permission(doctype, "submit", doc=doc):
 		try:
