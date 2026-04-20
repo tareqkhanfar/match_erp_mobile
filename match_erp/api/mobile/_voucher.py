@@ -241,10 +241,23 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 		doc_data["schedule_date"] = header_schedule_date
 
 	# --- is_paid on invoices -----------------------------------------------
+	# ERPNext Sales/Purchase Invoice marks payment via the `payments` child
+	# table — setting is_paid=1 alone has no effect. We add one payment row
+	# for the full outstanding amount (0 at insert time; ERPNext fills it in
+	# during submit/save via its payment logic).
 	if doctype in INVOICE_DOCTYPES and payload.get("is_paid"):
-		doc_data["is_pos"] = 0  # keep regular invoice flow
 		doc_data["is_paid"] = 1
-		doc_data["mode_of_payment"] = payload["mode_of_payment"]
+		mop = payload["mode_of_payment"]
+		doc_data["mode_of_payment"] = mop
+		# Populate the payments table so ERPNext knows which MOP was used.
+		# `amount` is intentionally left at 0 here — ERPNext sets it to the
+		# outstanding amount automatically during save/submit.
+		doc_data["payments"] = [
+			{
+				"mode_of_payment": mop,
+				"amount": 0,
+			}
+		]
 
 	# --- Return handling ----------------------------------------------------
 	if is_return:
