@@ -249,32 +249,59 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 	doc = frappe.get_doc(doc_data)
 	doc.insert(ignore_permissions=False)
 
-	# --- is_paid on invoices -----------------------------------------------
-	# Must be done AFTER insert so grand_total is calculated by ERPNext.
-	# We then add one payments row for the full grand_total and re-save.
-	if doctype in INVOICE_DOCTYPES and payload.get("is_paid"):
-		mop = payload["mode_of_payment"]
-		doc.is_paid = 1
-		doc.mode_of_payment = mop
-		doc.append("payments", {
-			"mode_of_payment": mop,
-			"amount": doc.grand_total or 0,
-		})
-		doc.save(ignore_permissions=True)
-
 	if frappe.has_permission(doctype, "submit", doc=doc):
 		try:
 			doc.submit()
 		except frappe.PermissionError:
 			pass
 
+	# --- is_paid: create a Payment Entry after submit ---------------------
+	# ERPNext v15 non-POS invoices don't use the `payments` child table.
+	# The correct flow is to submit the invoice then create a Payment Entry
+	# against it, which sets outstanding_amount → 0 and status → Paid.
+	if doctype in INVOICE_DOCTYPES and payload.get("is_paid") and doc.docstatus == 1:
+		try:
+			mop = payload["mode_of_payment"]
+			bank_account = frappe.db.get_value(
+				"Mode of Payment Account",
+				{"parent": mop, "company": doc.company},
+				"default_account",
+			)
+			pe = frappe.get_doc({
+				"doctype": "Payment Entry",
+				"payment_type": "Receive" if doctype == "Sales Invoice" else "Pay",
+				"posting_date": doc.posting_date or frappe.utils.today(),
+				"company": doc.company,
+				"mode_of_payment": mop,
+				"paid_to": bank_account,
+				"party_type": "Customer" if doctype == "Sales Invoice" else "Supplier",
+				"party": doc.customer if doctype == "Sales Invoice" else doc.supplier,
+				"paid_amount": doc.grand_total,
+				"received_amount": doc.grand_total,
+				"references": [{
+					"reference_doctype": doctype,
+					"reference_name": doc.name,
+					"allocated_amount": doc.grand_total,
+				}],
+				"reference_no": doc.name,
+				"reference_date": doc.posting_date or frappe.utils.today(),
+			})
+			pe.insert(ignore_permissions=True)
+			pe.submit()
+		except Exception as pe_err:
+			# Payment entry failure is non-fatal — invoice is still created.
+			frappe.log_error(f"Payment Entry failed for {doc.name}: {pe_err}")
+
 	frappe.db.commit()
+
+	# Re-fetch status after payment entry may have changed it.
+	final_status = frappe.db.get_value(doctype, doc.name, "status") or doc.status or "Draft"
 
 	return ok(
 		{
 			"name": doc.name,
 			"doc_type": doctype,
-			"status": doc.status or "Draft",
+			"status": final_status,
 			"duplicate": False,
 		},
 		en=f"{doctype} created",
