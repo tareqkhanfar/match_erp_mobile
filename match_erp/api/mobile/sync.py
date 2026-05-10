@@ -30,6 +30,46 @@ DEFAULT_LIMIT = 200
 MAX_LIMIT = 1000
 
 
+def _site_base_url() -> str:
+	"""Best-effort absolute base URL for the current site.
+
+	Order of preference:
+	  1. `frappe.utils.get_url()` — works for v15+v16 when accessed via HTTP.
+	  2. The site's `host_name` System Setting.
+	  3. Empty string — caller falls back to relative paths.
+	"""
+	try:
+		from frappe.utils import get_url
+
+		url = get_url()
+		if url:
+			return url.rstrip("/")
+	except Exception:
+		pass
+	try:
+		host = frappe.db.get_single_value("System Settings", "host_name")
+		if host:
+			return host.rstrip("/")
+	except Exception:
+		pass
+	return ""
+
+
+def _absolutize_file(file_url: str | None) -> str | None:
+	"""Convert a relative `/files/...` or `/private/files/...` URL into an
+	absolute one so mobile clients can fetch it directly."""
+	if not file_url:
+		return None
+	if file_url.startswith(("http://", "https://")):
+		return file_url
+	base = _site_base_url()
+	if not base:
+		return file_url  # leave relative; client may rewrite
+	if not file_url.startswith("/"):
+		file_url = "/" + file_url
+	return f"{base}{file_url}"
+
+
 def _parse_sync_args() -> tuple[str | None, int, dict]:
 	body = parse_body()
 	modified_after = body.get("modified_after")
@@ -251,11 +291,78 @@ def get_items(**kwargs):
 		code = r["item_code"]
 		r["price_list_rate"] = price_map.get(code, 0.0)
 		r["actual_qty"] = qty_map.get(code, 0.0)
+		# `image` arrives as a relative `/files/...` path; rewrite to absolute
+		# so the mobile client can render it without rebuilding the URL.
+		if r.get("image"):
+			r["image"] = _absolutize_file(r["image"])
 
 	return ok(
 		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
 		en="Items synced",
 		ar="تمت مزامنة الأصناف",
+	)
+
+
+# ---------------------------------------------------------------------------
+# Item UOM Conversions (alternate units per item, e.g. Carton/Box/Piece)
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+@mobile_endpoint
+def get_item_uom_conversions(**kwargs):
+	"""Stream the `UOM Conversion Detail` child table across all items.
+
+	Each row tells the client: "for item X, UOM Y is worth Z stock UOMs".
+	The client persists these alongside the item's stock UOM so the voucher
+	editor can offer a UOM picker that auto-fills the conversion factor.
+
+	This child doctype exists on both ERPNext v15 and v16 (`UOM Conversion
+	Detail`, parent = `Item`, columns: `uom`, `conversion_factor`).
+	"""
+	modified_after, limit, _body = _parse_sync_args()
+
+	where = ""
+	params: list[Any] = []
+	if modified_after:
+		where = "WHERE modified > %s"
+		params.append(modified_after)
+
+	params.append(limit + 1)
+
+	sql = f"""
+		SELECT name, parent AS item_code, uom, conversion_factor, modified
+		FROM `tabUOM Conversion Detail`
+		{where}
+		ORDER BY modified ASC, name ASC
+		LIMIT %s
+	"""
+
+	rows = frappe.db.sql(sql, tuple(params), as_dict=True)
+
+	has_more = len(rows) > limit
+	if has_more:
+		rows = rows[:limit]
+
+	next_cursor = None
+	if rows:
+		last_modified = rows[-1].get("modified")
+		if last_modified is not None:
+			next_cursor = (
+				last_modified.isoformat(sep=" ")
+				if hasattr(last_modified, "isoformat")
+				else str(last_modified)
+			)
+		for r in rows:
+			m = r.get("modified")
+			if m is not None and hasattr(m, "isoformat"):
+				r["modified"] = m.isoformat(sep=" ")
+			# Normalize numeric type for JSON.
+			if r.get("conversion_factor") is not None:
+				r["conversion_factor"] = float(r["conversion_factor"])
+
+	return ok(
+		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
+		en="UOM conversions synced",
+		ar="تمت مزامنة تحويلات الوحدات",
 	)
 
 
@@ -366,6 +473,9 @@ def get_item_groups(**kwargs):
 		"modified",
 	]
 	rows, has_more, next_cursor = _fetch("Item Group", fields, modified_after, limit)
+	for r in rows:
+		if r.get("image"):
+			r["image"] = _absolutize_file(r["image"])
 	return ok(
 		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
 		en="Item groups synced",
