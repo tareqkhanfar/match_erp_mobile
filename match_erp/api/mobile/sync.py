@@ -241,24 +241,52 @@ def get_items(**kwargs):
 	item_codes = [r["item_code"] for r in rows]
 
 	# --- price_list_rate ------------------------------------------------------
+	# Per-UOM prices are returned separately via `get_item_uom_conversions`.
+	# Here we only want the stock-UOM price, which in ERPNext is the row
+	# where `Item Price.uom` is either NULL or equal to the item's stock UOM.
+	# Without that filter we'd accidentally pick up an alternate-UOM row
+	# (e.g. Carton) and use it as the per-piece price.
 	price_map: dict[str, float] = {}
 	if price_list:
+		# Build {item_code: stock_uom} so we can match per row.
+		stock_uoms = {r["item_code"]: r.get("stock_uom") for r in rows}
+		distinct_stock_uoms = {u for u in stock_uoms.values() if u}
+		uom_filter_sql = ""
+		uom_params: list[Any] = []
+		if distinct_stock_uoms:
+			uom_filter_sql = "AND (uom IS NULL OR uom = '' OR uom IN %s)"
+			uom_params.append(tuple(distinct_stock_uoms))
+
 		price_rows = frappe.db.sql(
-			"""
-			SELECT item_code, price_list_rate
+			f"""
+			SELECT item_code, uom, price_list_rate
 			FROM `tabItem Price`
 			WHERE price_list = %s
 			  AND item_code IN %s
+			  {uom_filter_sql}
 			  AND (valid_from IS NULL OR valid_from <= CURDATE())
 			  AND (valid_upto IS NULL OR valid_upto >= CURDATE())
 			ORDER BY valid_from DESC
 			""",
-			(price_list, tuple(item_codes)),
+			(price_list, tuple(item_codes), *uom_params),
 			as_dict=True,
 		)
-		# If multiple valid rows, first wins (ORDER BY valid_from DESC).
+		# Prefer a row whose UOM matches the item's stock UOM exactly;
+		# fall back to a NULL/blank-UOM row when nothing better is found.
 		for p in price_rows:
-			price_map.setdefault(p["item_code"], float(p["price_list_rate"] or 0))
+			code = p["item_code"]
+			rate = float(p["price_list_rate"] or 0)
+			row_uom = p.get("uom") or ""
+			stock_uom = stock_uoms.get(code) or ""
+			if code in price_map:
+				continue
+			# Always accept the exact stock-UOM match.
+			if row_uom and stock_uom and row_uom == stock_uom:
+				price_map[code] = rate
+				continue
+			# Fall back to NULL/blank UOM only if no exact match seen yet.
+			if not row_uom:
+				price_map.setdefault(code, rate)
 
 	# --- actual_qty -----------------------------------------------------------
 	qty_map: dict[str, float] = {}
@@ -315,10 +343,17 @@ def get_item_uom_conversions(**kwargs):
 	The client persists these alongside the item's stock UOM so the voucher
 	editor can offer a UOM picker that auto-fills the conversion factor.
 
-	This child doctype exists on both ERPNext v15 and v16 (`UOM Conversion
-	Detail`, parent = `Item`, columns: `uom`, `conversion_factor`).
+	When a `price_list` is supplied in the body, each row is augmented with
+	the matching `Item Price` rate for that UOM (or 0 when ERPNext has no
+	UOM-specific price — the client falls back to a factor-scaled rate
+	from the stock-UOM price). This lets distributors price the same item
+	differently for Carton vs Box vs Piece in the price list.
+
+	Compatible with ERPNext v15 + v16 (`UOM Conversion Detail` and
+	`Item Price.uom` exist on both).
 	"""
-	modified_after, limit, _body = _parse_sync_args()
+	modified_after, limit, body = _parse_sync_args()
+	price_list: str | None = body.get("price_list") or None
 
 	where = ""
 	params: list[Any] = []
@@ -358,6 +393,42 @@ def get_item_uom_conversions(**kwargs):
 			# Normalize numeric type for JSON.
 			if r.get("conversion_factor") is not None:
 				r["conversion_factor"] = float(r["conversion_factor"])
+
+	# Per-UOM price lookup. ERPNext's `Item Price.uom` is nullable: rows
+	# without a UOM apply to the stock UOM only — we ignore those here
+	# since `get_items` already returns the stock-UOM price. We only
+	# want rows that explicitly target the alternate UOM.
+	if price_list and rows:
+		item_codes = list({r["item_code"] for r in rows if r.get("item_code")})
+		uoms       = list({r["uom"]       for r in rows if r.get("uom")})
+		if item_codes and uoms:
+			price_rows = frappe.db.sql(
+				"""
+				SELECT item_code, uom, price_list_rate
+				FROM `tabItem Price`
+				WHERE price_list = %s
+				  AND item_code IN %s
+				  AND uom IN %s
+				  AND (valid_from IS NULL OR valid_from <= CURDATE())
+				  AND (valid_upto IS NULL OR valid_upto >= CURDATE())
+				ORDER BY valid_from DESC
+				""",
+				(price_list, tuple(item_codes), tuple(uoms)),
+				as_dict=True,
+			)
+			price_map: dict[tuple[str, str], float] = {}
+			for p in price_rows:
+				key = (p["item_code"], p["uom"])
+				# First row wins (most-recent valid_from), in line with
+				# get_items' price selection.
+				price_map.setdefault(key, float(p["price_list_rate"] or 0))
+			for r in rows:
+				r["price_list_rate"] = price_map.get(
+					(r["item_code"], r["uom"]), 0.0
+				)
+	else:
+		for r in rows:
+			r["price_list_rate"] = 0.0
 
 	return ok(
 		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
