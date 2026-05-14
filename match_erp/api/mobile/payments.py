@@ -31,6 +31,25 @@ import frappe
 from match_erp.api.mobile.envelope import fail, mobile_endpoint, ok, parse_body
 
 
+def _get_exchange_rate(from_currency: str, to_currency: str, posting_date) -> float:
+	"""Best-effort exchange-rate lookup for Payment Entry.
+
+	Uses ERPNext's own `get_exchange_rate` helper when available, falling
+	back to 1.0 — this is safe because the caller only invokes us when
+	source and target currencies actually differ; in same-currency setups
+	the rate must be 1.0 anyway.
+	"""
+	if not from_currency or not to_currency or from_currency == to_currency:
+		return 1.0
+	try:
+		from erpnext.setup.utils import get_exchange_rate
+
+		rate = get_exchange_rate(from_currency, to_currency, posting_date)
+		return float(rate) if rate else 1.0
+	except Exception:
+		return 1.0
+
+
 def _idempotency_lookup(local_id: str) -> str | None:
 	if not local_id:
 		return None
@@ -120,17 +139,74 @@ def _create_payment(payment_type: str) -> dict:
 			}
 		]
 
+	# Resolve paid_from / paid_to from the Mode of Payment Account child
+	# table when the client didn't send them explicitly. Without these,
+	# ERPNext refuses to compute exchange rates or set account currencies.
+	mop = payload["mode_of_payment"]
+	company = payload["company"]
+	mop_bank_account = frappe.db.get_value(
+		"Mode of Payment Account",
+		{"parent": mop, "company": company},
+		"default_account",
+	)
+	if payment_type == "Receive":
+		# Money comes IN — paid_to is the bank/cash account, paid_from is
+		# the party receivable account (resolved by set_missing_values).
+		doc_data.setdefault("paid_to", mop_bank_account)
+	else:
+		# Money goes OUT — paid_from is the bank/cash account.
+		doc_data.setdefault("paid_from", mop_bank_account)
+
 	doc = frappe.get_doc(doc_data)
 
-	# Payment Entry needs accounts set before insert. setup_party_account_field
-	# + set_missing_values populates them from company defaults.
+	# Populate party account, currencies, and exchange rates from the
+	# company defaults so the document validates cleanly. We have to call
+	# these BEFORE insert because Payment Entry's own validate() reads
+	# account_currency and exchange-rate fields.
 	try:
 		doc.setup_party_account_field()
+	except Exception:
+		pass
+	try:
 		doc.set_missing_values()
 	except Exception:
-		# If the helpers aren't available (older ERPNext), fall through — the
-		# user can supply paid_from/paid_to explicitly.
 		pass
+
+	# Backstop: when set_missing_values can't auto-compute the exchange
+	# rates (happens on some v15/v16 builds when accounts share the company
+	# currency), force them to 1.0 explicitly. ERPNext rejects the doc
+	# with "Target Exchange Rate required" otherwise.
+	company_currency = frappe.db.get_value(
+		"Company", company, "default_currency"
+	)
+	if not doc.get("paid_from_account_currency") and doc.get("paid_from"):
+		doc.paid_from_account_currency = frappe.db.get_value(
+			"Account", doc.paid_from, "account_currency"
+		) or company_currency
+	if not doc.get("paid_to_account_currency") and doc.get("paid_to"):
+		doc.paid_to_account_currency = frappe.db.get_value(
+			"Account", doc.paid_to, "account_currency"
+		) or company_currency
+	if not doc.get("source_exchange_rate"):
+		# When source and company currency match → 1.0. Otherwise let
+		# ERPNext's currency_exchange helper resolve a rate (best-effort).
+		doc.source_exchange_rate = (
+			1.0
+			if doc.paid_from_account_currency == company_currency
+			else _get_exchange_rate(
+				doc.paid_from_account_currency, company_currency, doc.posting_date
+			)
+		)
+	if not doc.get("target_exchange_rate"):
+		doc.target_exchange_rate = (
+			1.0
+			if doc.paid_to_account_currency == company_currency
+			else _get_exchange_rate(
+				doc.paid_to_account_currency, company_currency, doc.posting_date
+			)
+		)
+	# `base_paid_amount` / `base_received_amount` are derived from the
+	# exchange rates — let ERPNext recompute them on validate.
 
 	doc.insert(ignore_permissions=False)
 

@@ -195,6 +195,27 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 		"custom_mobile_local_id": local_id,
 	}
 
+	# Exchange rate: when the voucher currency matches the company currency
+	# the rate is 1.0 — pass it explicitly so ERPNext's validate doesn't
+	# reject the doc with "Conversion Rate required". Multi-currency setups
+	# can still override via the payload.
+	company_currency = frappe.db.get_value(
+		"Company", payload["company"], "default_currency"
+	)
+	voucher_currency = payload.get("currency") or company_currency
+	if voucher_currency:
+		if "conversion_rate" not in doc_data and payload.get("conversion_rate") is None:
+			doc_data["conversion_rate"] = (
+				1.0 if voucher_currency == company_currency else float(
+					payload.get("conversion_rate") or 1.0
+				)
+			)
+		# Price-list currency conversion rate — same logic.
+		if payload.get("plc_conversion_rate") is not None:
+			doc_data["plc_conversion_rate"] = float(payload["plc_conversion_rate"])
+		else:
+			doc_data["plc_conversion_rate"] = 1.0
+
 	# Discount — accept both new names (total_discount_*) and old
 	# (additional_discount_percentage / discount_amount).
 	pct = payload.get("total_discount_pct")

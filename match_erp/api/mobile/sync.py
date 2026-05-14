@@ -587,6 +587,61 @@ def get_modes_of_payment(**kwargs):
 
 
 # ---------------------------------------------------------------------------
+# Customer Groups — small tree, cached by mobile pickers
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+@mobile_endpoint
+def get_customer_groups(**kwargs):
+	"""Flat list of customer groups for the mobile create-customer form.
+
+	The doctype exists unchanged across ERPNext v15 + v16. We return every
+	row including is_group=1 nodes so the client can render a tree if it
+	wants — current usage is a simple dropdown that filters out group rows.
+	"""
+	modified_after, limit, _body = _parse_sync_args()
+	fields = [
+		"name",
+		"customer_group_name",
+		"parent_customer_group",
+		"is_group",
+		"modified",
+	]
+	rows, has_more, next_cursor = _fetch(
+		"Customer Group", fields, modified_after, limit
+	)
+	return ok(
+		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
+		en="Customer groups synced",
+		ar="تمت مزامنة مجموعات العملاء",
+	)
+
+
+# ---------------------------------------------------------------------------
+# Territories — also a small tree
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+@mobile_endpoint
+def get_territories(**kwargs):
+	"""Flat list of territories for the mobile create-customer form."""
+	modified_after, limit, _body = _parse_sync_args()
+	fields = [
+		"name",
+		"territory_name",
+		"parent_territory",
+		"is_group",
+		"modified",
+	]
+	rows, has_more, next_cursor = _fetch(
+		"Territory", fields, modified_after, limit
+	)
+	return ok(
+		{"items": rows, "has_more": has_more, "next_cursor": next_cursor},
+		en="Territories synced",
+		ar="تمت مزامنة المناطق",
+	)
+
+
+# ---------------------------------------------------------------------------
 # Suppliers
 # ---------------------------------------------------------------------------
 @frappe.whitelist()
