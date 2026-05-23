@@ -6,15 +6,16 @@ A user without a linked Customer is treated as unauthorized — we never
 fall back to "show everything" because that would leak data across
 customer accounts.
 
-Resolution order:
-  1. `Customer.portal_users.user` — the v15/v16 idiomatic link.
-  2. `Contact.user` → `Dynamic Link` → Customer — older installs.
-  3. Auto-link by matching `User.email = Customer.email_id` when exactly
-     one customer matches. Created lazily so Waseem doesn't have to
-     touch the Portal Users table for every customer he onboards.
+Linking model (strict):
+  The administrator goes to Customer → Portal Users → adds the User's
+  email. At runtime we look the user up in `tabPortal User` and return
+  the parent Customer. That's the only canonical link.
 
-Steps 1+2 are cheap reads; step 3 mutates the Customer doc so we only
-run it when the prior lookups fail.
+  As a secondary path (for older installs that wired things through
+  Contact dynamic-links instead) we also check the Contact route. We
+  intentionally do NOT auto-create links, do NOT match by email, and do
+  NOT fall back to "any Customer" — the admin must opt-in explicitly by
+  populating Portal Users.
 """
 
 from __future__ import annotations
@@ -25,6 +26,10 @@ from match_erp.api.mobile.envelope import fail
 
 
 def _by_portal_user(user: str) -> str | None:
+	"""Canonical lookup: find the Customer whose `portal_users` child
+	table contains this user. Direct SQL because `frappe.db.get_value`
+	on child tables varies between ERPNext versions.
+	"""
 	row = frappe.db.sql(
 		"""
 		SELECT parent
@@ -38,6 +43,10 @@ def _by_portal_user(user: str) -> str | None:
 
 
 def _by_contact(user: str) -> str | None:
+	"""Secondary path: legacy installs link via Contact instead of
+	Portal Users. Returns the Customer linked to the Contact whose
+	`user` field matches. Skipped silently if no such Contact exists.
+	"""
 	contact = frappe.db.get_value("Contact", {"user": user}, "name")
 	if not contact:
 		return None
@@ -52,40 +61,10 @@ def _by_contact(user: str) -> str | None:
 	)
 
 
-def _auto_link_by_email(user: str) -> str | None:
-	"""Find a unique Customer by `email_id == user`. When exactly one
-	matches, append the user to its Portal Users so future requests
-	resolve via the fast path. Multi-match → bail; we'd rather show the
-	error than guess wrong.
-	"""
-	candidates = frappe.db.sql(
-		"SELECT name FROM `tabCustomer` WHERE email_id = %s LIMIT 2",
-		(user,),
-		as_dict=True,
-	)
-	if len(candidates) != 1:
-		return None
-	customer = candidates[0]["name"]
-	try:
-		doc = frappe.get_doc("Customer", customer)
-		# `portal_users` is a child table on Customer in v15+v16. Only
-		# append when the row isn't already there — Frappe will happily
-		# create duplicates otherwise.
-		existing = [p.user for p in (doc.get("portal_users") or [])]
-		if user not in existing:
-			doc.append("portal_users", {"user": user})
-			doc.save(ignore_permissions=True)
-			frappe.db.commit()
-	except Exception:
-		# Best-effort: even if the save fails (e.g. portal_users field
-		# unavailable on this build) we still return the resolved customer
-		# so the request can proceed.
-		pass
-	return customer
-
-
 def session_customer() -> str | None:
-	"""Return the Customer name linked to the logged-in user, or None."""
+	"""Return the Customer name explicitly linked to the logged-in user,
+	or None when no link exists. Never guesses.
+	"""
 	user = frappe.session.user
 	if not user or user in ("Guest", "Administrator"):
 		# Administrator gets explicit None — we don't want admins
@@ -93,11 +72,7 @@ def session_customer() -> str | None:
 		# getting an empty response that hides the misconfiguration.
 		return None
 
-	for finder in (_by_portal_user, _by_contact, _auto_link_by_email):
-		match = finder(user)
-		if match:
-			return match
-	return None
+	return _by_portal_user(user) or _by_contact(user)
 
 
 def require_session_customer() -> tuple[str | None, dict | None]:
@@ -113,9 +88,9 @@ def require_session_customer() -> tuple[str | None, dict | None]:
 	user = frappe.session.user or "(none)"
 	return None, fail(
 		f"This account ({user}) is not linked to a customer record. "
-		"Please ask your sales rep to add this email to the customer's "
-		"Portal Users in ERPNext.",
+		"Open the customer in ERPNext and add this email to the "
+		"Portal Users table.",
 		f"هذا الحساب ({user}) غير مرتبط بسجل عميل. "
-		"يرجى مطالبة مندوب المبيعات بإضافة هذا البريد إلى "
-		"مستخدمي بوابة العميل في ERPNext.",
+		"افتح العميل في ERPNext وأضف هذا البريد إلى جدول "
+		"مستخدمي البوابة.",
 	)
