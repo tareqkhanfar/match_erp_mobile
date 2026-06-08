@@ -5,18 +5,14 @@ customer-app endpoints) is recorded here by the `mobile_endpoint`
 decorator. The log captures the raw JSON body, the response, the HTTP
 status, and timing.
 
-Two extra capabilities make it a debugging/repair tool, not just an
-audit trail:
+The request body is editable through a custom HTML/JS JSON editor on the
+form (see mobile_request_log.js). That editor writes the edited payload
+straight back into `request_body`, so the controller only needs to:
 
-1. **Flatten / rebuild** — on load we explode the JSON body into a flat
-   list of dotted key paths (`items.0.qty`) so a System Manager can edit
-   individual values in a grid without hand-editing JSON. On save we
-   fold the grid back into JSON. Nested objects and arrays are fully
-   supported.
-
-2. **Replay** — re-dispatch the (possibly edited) request to its original
-   endpoint, server-side, as the original user. Lets you fix a failed
-   request and re-run it without touching the mobile device.
+1. **Validate** that `request_body` is parseable JSON on save (so a
+   later replay can rely on it).
+2. **Replay** — re-dispatch the (possibly edited) request to its
+   original endpoint, server-side, as the original user.
 """
 
 from __future__ import annotations
@@ -30,159 +26,18 @@ from frappe.utils import now_datetime
 
 
 class MobileRequestLog(Document):
-	def onload(self):
-		"""Populate the editable key/value grid from the request body so
-		the user always sees the current JSON exploded into rows. We do
-		this on load (not on save) so the grid reflects external edits to
-		the raw Code field too."""
-		self._sync_kv_from_body()
-
 	def validate(self):
-		"""If the user edited the key/value grid, fold it back into the
-		request_body JSON before saving. The grid is the source of truth
-		when both changed in the same save — value edits are the common
-		repair workflow."""
-		if self.kv_pairs:
-			rebuilt = _rebuild_from_kv(self.kv_pairs)
-			if rebuilt is not None:
-				self.request_body = json.dumps(rebuilt, ensure_ascii=False, indent=2)
-
-	def _sync_kv_from_body(self):
-		try:
-			data = json.loads(self.request_body) if self.request_body else {}
-		except (json.JSONDecodeError, TypeError):
+		"""Keep `request_body` as valid, pretty-printed JSON. The visual
+		editor already emits clean JSON, but a user may also hand-edit the
+		raw field — normalise it here and reject anything unparseable so a
+		replay never trips on bad input."""
+		if not self.request_body:
 			return
-		if not isinstance(data, (dict, list)):
-			return
-		self.set("kv_pairs", [])
-		for path, value in _flatten(data):
-			vtype, vstr = _encode_value(value)
-			self.append("kv_pairs", {
-				"key_path": path,
-				"value_type": vtype,
-				"value": vstr,
-			})
-
-
-# ---------------------------------------------------------------------------
-# JSON flatten / rebuild — shared by the controller and the replay action.
-# ---------------------------------------------------------------------------
-def _flatten(obj, prefix: str = ""):
-	"""Yield (dotted_path, scalar_value) pairs for a nested dict/list.
-
-	Lists use numeric path segments: `items.0.qty`. Scalars (str/int/
-	float/bool/None) are yielded directly; containers recurse.
-	"""
-	if isinstance(obj, dict):
-		for k, v in obj.items():
-			path = f"{prefix}.{k}" if prefix else str(k)
-			if isinstance(v, (dict, list)):
-				yield from _flatten(v, path)
-			else:
-				yield path, v
-	elif isinstance(obj, list):
-		for i, v in enumerate(obj):
-			path = f"{prefix}.{i}" if prefix else str(i)
-			if isinstance(v, (dict, list)):
-				yield from _flatten(v, path)
-			else:
-				yield path, v
-
-
-def _encode_value(value) -> tuple[str, str]:
-	"""Map a Python scalar to (value_type, value_string) for the grid."""
-	if value is None:
-		return "null", ""
-	if isinstance(value, bool):
-		return "bool", "true" if value else "false"
-	if isinstance(value, (int, float)):
-		return "number", str(value)
-	return "string", str(value)
-
-
-def _decode_value(value_type: str, value_str: str):
-	"""Inverse of _encode_value — turn a grid row back into a scalar."""
-	if value_type == "null":
-		return None
-	if value_type == "bool":
-		return str(value_str).strip().lower() in ("1", "true", "yes")
-	if value_type == "number":
-		s = (value_str or "").strip()
-		if s == "":
-			return 0
 		try:
-			# Keep ints as ints so the payload round-trips cleanly.
-			if "." in s or "e" in s.lower():
-				return float(s)
-			return int(s)
-		except ValueError:
-			try:
-				return float(s)
-			except ValueError:
-				return s
-	return value_str or ""
-
-
-def _rebuild_from_kv(rows) -> dict | list | None:
-	"""Fold the flat key/value rows back into a nested structure.
-
-	A path segment that is an integer index implies a list at that level;
-	a string segment implies a dict. We grow lists as needed so order is
-	preserved. Returns None if there are no rows to rebuild.
-	"""
-	if not rows:
-		return None
-
-	# Decide whether the root is a list or a dict by looking at the first
-	# segment of the first path.
-	def seg_is_index(seg: str) -> bool:
-		return seg.isdigit()
-
-	root: dict | list
-	first_seg = (rows[0].key_path or "").split(".")[0]
-	root = [] if seg_is_index(first_seg) else {}
-
-	for row in rows:
-		path = row.key_path or ""
-		if not path:
-			continue
-		segments = path.split(".")
-		value = _decode_value(row.value_type, row.value)
-		_assign(root, segments, value)
-	return root
-
-
-def _assign(container, segments: list[str], value):
-	"""Walk/create the nested container along `segments` and set `value`."""
-	seg = segments[0]
-	is_last = len(segments) == 1
-	idx = int(seg) if seg.isdigit() else None
-
-	if is_last:
-		if idx is not None and isinstance(container, list):
-			_ensure_list_len(container, idx)
-			container[idx] = value
-		elif isinstance(container, dict):
-			container[seg] = value
-		return
-
-	# Need to descend — determine the child container type from the NEXT
-	# segment (index → list, else dict).
-	next_is_index = segments[1].isdigit()
-	if idx is not None and isinstance(container, list):
-		_ensure_list_len(container, idx)
-		if not isinstance(container[idx], (dict, list)):
-			container[idx] = [] if next_is_index else {}
-		_assign(container[idx], segments[1:], value)
-	elif isinstance(container, dict):
-		if seg not in container or not isinstance(container[seg], (dict, list)):
-			container[seg] = [] if next_is_index else {}
-		_assign(container[seg], segments[1:], value)
-
-
-def _ensure_list_len(lst: list, idx: int):
-	while len(lst) <= idx:
-		lst.append(None)
+			data = json.loads(self.request_body)
+		except (json.JSONDecodeError, TypeError, ValueError):
+			frappe.throw(_("Request Body is not valid JSON."))
+		self.request_body = json.dumps(data, ensure_ascii=False, indent=2)
 
 
 # ---------------------------------------------------------------------------

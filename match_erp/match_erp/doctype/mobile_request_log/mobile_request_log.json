@@ -17,9 +17,8 @@
   "local_id",
   "created_doc",
   "section_request",
+  "json_editor",
   "request_body",
-  "section_kv",
-  "kv_pairs",
   "section_response",
   "response_body",
   "error_message",
@@ -95,29 +94,24 @@
    "read_only": 1
   },
   {
-   "collapsible": 1,
    "fieldname": "section_request",
    "fieldtype": "Section Break",
-   "label": "Raw Request Body (JSON)"
+   "label": "Request Body"
   },
   {
-   "description": "The exact JSON payload received from the mobile client. Edit this and use 'Replay Request' to re-send it.",
+   "description": "Visual editor for the request payload. Supports nested objects and arrays. Edits are written back into the raw JSON on save; use 'Replay Request' to re-send.",
+   "fieldname": "json_editor",
+   "fieldtype": "HTML",
+   "label": "Editor"
+  },
+  {
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:false",
+   "description": "Raw JSON — kept in sync with the visual editor above. You may also paste/edit JSON here directly.",
    "fieldname": "request_body",
    "fieldtype": "Code",
-   "label": "Request Body",
+   "label": "Raw JSON",
    "options": "JSON"
-  },
-  {
-   "fieldname": "section_kv",
-   "fieldtype": "Section Break",
-   "label": "Editable Fields"
-  },
-  {
-   "description": "Flattened view of the request body. Keys are read-only; edit a Value and the changes are written back into the Request Body when you save.",
-   "fieldname": "kv_pairs",
-   "fieldtype": "Table",
-   "label": "Request Fields",
-   "options": "Mobile Request Field"
   },
   {
    "collapsible": 1,
