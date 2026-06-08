@@ -207,6 +207,46 @@ def _customer_outstanding(customer: str) -> float:
 # ---------------------------------------------------------------------------
 # Items
 # ---------------------------------------------------------------------------
+def _profile_item_group_filter() -> list | None:
+	"""Build a get_list filter restricting items to the item groups
+	configured on the caller's Dist POS Profile.
+
+	Returns None when the profile has no item-group restriction (→ all
+	items). Descendant groups are included so picking a parent group
+	("Beverages") also pulls its children ("Hot Drinks", …).
+	"""
+	try:
+		from match_erp.match_erp.doctype.dist_pos_profile.dist_pos_profile import (
+			resolve_for_user,
+		)
+
+		profile = resolve_for_user(frappe.session.user)
+	except Exception:
+		profile = None
+	if profile is None:
+		return None
+
+	groups = [r.item_group for r in (profile.get("item_groups") or []) if r.get("item_group")]
+	if not groups:
+		return None
+
+	# Expand each selected group to include its descendants via the nested
+	# set columns (lft/rgt) on Item Group.
+	all_groups: set[str] = set(groups)
+	for g in groups:
+		bounds = frappe.db.get_value("Item Group", g, ["lft", "rgt"])
+		if not bounds:
+			continue
+		lft, rgt = bounds
+		children = frappe.get_all(
+			"Item Group",
+			filters=[["lft", ">=", lft], ["rgt", "<=", rgt]],
+			pluck="name",
+		)
+		all_groups.update(children)
+	return [["item_group", "in", list(all_groups)]]
+
+
 @frappe.whitelist()
 @mobile_endpoint
 def get_items(**kwargs):
@@ -229,7 +269,11 @@ def get_items(**kwargs):
 		"modified",
 	]
 
-	rows, has_more, next_cursor = _fetch("Item", fields, modified_after, limit)
+	# Honor the profile's item-group restriction (empty = all).
+	extra = _profile_item_group_filter()
+	rows, has_more, next_cursor = _fetch(
+		"Item", fields, modified_after, limit, extra_filters=extra
+	)
 
 	if not rows:
 		return ok(

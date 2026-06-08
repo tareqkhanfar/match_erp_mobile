@@ -177,6 +177,7 @@ def _enforce_profile(doctype: str, payload: dict) -> tuple[bool, str, str]:
 
 	max_disc = float(profile.get("max_discount_pct") or 100)
 	allow_discount_change = bool(profile.get("allow_discount_change"))
+	block_oversell = bool(profile.get("block_sale_beyond_available_qty"))
 
 	for i, line in enumerate(payload.get("items") or [], start=1):
 		try:
@@ -197,6 +198,25 @@ def _enforce_profile(doctype: str, payload: dict) -> tuple[bool, str, str]:
 				f"Discount {disc:g}% exceeds the allowed maximum of {max_disc:g}% (line {i}).",
 				f"الخصم {disc:g}% يتجاوز الحد المسموح {max_disc:g}% (السطر {i}).",
 			)
+		# Block selling more than is on hand when the profile demands it.
+		if block_oversell:
+			code = line.get("item_code")
+			try:
+				qty = float(line.get("qty") or 0)
+			except (TypeError, ValueError):
+				qty = 0.0
+			if code and qty > 0:
+				on_hand = frappe.db.sql(
+					"SELECT COALESCE(SUM(actual_qty),0) FROM `tabBin` WHERE item_code=%s",
+					(code,),
+				)
+				available = float(on_hand[0][0]) if on_hand and on_hand[0] else 0.0
+				if qty > available:
+					return (
+						False,
+						f"Only {available:g} of {code} available (line {i}).",
+						f"المتوفر فقط {available:g} من {code} (السطر {i}).",
+					)
 	return True, "", ""
 
 
