@@ -26,10 +26,15 @@ class DistPOSProfile(Document):
 		self._validate_unique_users()
 
 	def _validate_discount(self):
-		if self.max_discount_pct is None:
-			self.max_discount_pct = 100
-		if self.max_discount_pct < 0 or self.max_discount_pct > 100:
+		# The desk posts numeric fields as strings before Frappe coerces
+		# them; cast defensively so validation never trips on a str.
+		try:
+			pct = float(self.max_discount_pct) if self.max_discount_pct not in (None, "") else 100.0
+		except (TypeError, ValueError):
+			frappe.throw(_("Max Discount % must be a number between 0 and 100."))
+		if pct < 0 or pct > 100:
 			frappe.throw(_("Max Discount % must be between 0 and 100."))
+		self.max_discount_pct = pct
 
 	def _validate_single_default(self):
 		"""At most one default profile per company. Keeps resolution
@@ -116,6 +121,15 @@ _SETTING_FIELDS = [
 	"company_email",
 	"company_tax_id",
 	"company_logo",
+	"app_logo",
+	# POS / advanced flags
+	"hide_unavailable_items",
+	"auto_add_item_to_cart",
+	"ignore_pricing_rule",
+	"print_receipt_on_order_complete",
+	"allow_partial_payment",
+	"block_sale_beyond_available_qty",
+	"apply_discount_on",
 ]
 
 _BOOL_FIELDS = {
@@ -131,6 +145,12 @@ _BOOL_FIELDS = {
 	"show_images",
 	"auto_sync_on_launch",
 	"sync_over_mobile_data",
+	"hide_unavailable_items",
+	"auto_add_item_to_cart",
+	"ignore_pricing_rule",
+	"print_receipt_on_order_complete",
+	"allow_partial_payment",
+	"block_sale_beyond_available_qty",
 }
 
 
@@ -221,9 +241,20 @@ def serialize(profile: "DistPOSProfile | None") -> dict:
 			out[f] = int(val or 500)
 		else:
 			out[f] = val if val is not None else ""
-	# Absolutize the logo path so the client can fetch it directly.
+	# Absolutize logo paths so the client can fetch them directly.
 	if out.get("company_logo"):
 		out["company_logo"] = _absolutize(out["company_logo"])
+	if out.get("app_logo"):
+		out["app_logo"] = _absolutize(out["app_logo"])
+	# Item / customer group filters → plain string lists.
+	out["item_groups"] = [
+		r.item_group for r in (profile.get("item_groups") or []) if r.get("item_group")
+	]
+	out["customer_groups"] = [
+		r.customer_group
+		for r in (profile.get("customer_groups") or [])
+		if r.get("customer_group")
+	]
 	return out
 
 
@@ -259,6 +290,16 @@ def _default_settings() -> dict:
 		"company_email": "",
 		"company_tax_id": "",
 		"company_logo": "",
+		"app_logo": "",
+		"hide_unavailable_items": False,
+		"auto_add_item_to_cart": False,
+		"ignore_pricing_rule": False,
+		"print_receipt_on_order_complete": False,
+		"allow_partial_payment": False,
+		"block_sale_beyond_available_qty": False,
+		"apply_discount_on": "Grand Total",
+		"item_groups": [],
+		"customer_groups": [],
 	}
 
 

@@ -44,13 +44,41 @@
   "column_break_sync",
   "sync_over_mobile_data",
   "tab_company",
+  "section_branding",
+  "app_logo",
+  "company_logo",
   "section_company",
   "company_address",
   "company_phone",
   "column_break_company",
   "company_email",
   "company_tax_id",
-  "company_logo"
+  "tab_pos",
+  "section_pos_filters",
+  "item_groups",
+  "customer_groups",
+  "section_pos_config",
+  "hide_unavailable_items",
+  "auto_add_item_to_cart",
+  "ignore_pricing_rule",
+  "column_break_pos_config",
+  "print_receipt_on_order_complete",
+  "allow_partial_payment",
+  "block_sale_beyond_available_qty",
+  "section_pos_accounting",
+  "taxes_and_charges",
+  "tax_category",
+  "apply_discount_on",
+  "column_break_pos_acc",
+  "income_account",
+  "expense_account",
+  "cost_center",
+  "section_pos_print",
+  "print_format",
+  "letter_head",
+  "column_break_pos_print",
+  "tc_name",
+  "select_print_heading"
  ],
  "fields": [
   {
@@ -272,6 +300,23 @@
    "label": "Company / Branding"
   },
   {
+   "fieldname": "section_branding",
+   "fieldtype": "Section Break",
+   "label": "Branding"
+  },
+  {
+   "description": "App logo shown inside the mobile app (splash / app bar).",
+   "fieldname": "app_logo",
+   "fieldtype": "Attach Image",
+   "label": "App Logo"
+  },
+  {
+   "description": "Logo printed on vouchers / receipts.",
+   "fieldname": "company_logo",
+   "fieldtype": "Attach Image",
+   "label": "Company Logo"
+  },
+  {
    "fieldname": "section_company",
    "fieldtype": "Section Break",
    "label": "Printed on Vouchers"
@@ -302,9 +347,152 @@
    "label": "Company Tax ID"
   },
   {
-   "fieldname": "company_logo",
-   "fieldtype": "Attach Image",
-   "label": "Company Logo"
+   "fieldname": "tab_pos",
+   "fieldtype": "Tab Break",
+   "label": "POS / Advanced"
+  },
+  {
+   "fieldname": "section_pos_filters",
+   "fieldtype": "Section Break",
+   "label": "Filters"
+  },
+  {
+   "description": "Only show items from these item groups. Empty = all.",
+   "fieldname": "item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Item Groups",
+   "options": "POS Item Group"
+  },
+  {
+   "description": "Only show customers from these customer groups. Empty = all.",
+   "fieldname": "customer_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Customer Groups",
+   "options": "POS Customer Group"
+  },
+  {
+   "fieldname": "section_pos_config",
+   "fieldtype": "Section Break",
+   "label": "Configuration"
+  },
+  {
+   "default": "0",
+   "fieldname": "hide_unavailable_items",
+   "fieldtype": "Check",
+   "label": "Hide Unavailable Items"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_add_item_to_cart",
+   "fieldtype": "Check",
+   "label": "Automatically Add Filtered Item To Cart"
+  },
+  {
+   "default": "0",
+   "fieldname": "ignore_pricing_rule",
+   "fieldtype": "Check",
+   "label": "Ignore Pricing Rule"
+  },
+  {
+   "fieldname": "column_break_pos_config",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "print_receipt_on_order_complete",
+   "fieldtype": "Check",
+   "label": "Print Receipt on Order Complete"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_partial_payment",
+   "fieldtype": "Check",
+   "label": "Allow Partial Payment"
+  },
+  {
+   "default": "0",
+   "fieldname": "block_sale_beyond_available_qty",
+   "fieldtype": "Check",
+   "label": "Block Sale Beyond Available Qty"
+  },
+  {
+   "fieldname": "section_pos_accounting",
+   "fieldtype": "Section Break",
+   "label": "Accounting"
+  },
+  {
+   "fieldname": "taxes_and_charges",
+   "fieldtype": "Link",
+   "label": "Taxes and Charges",
+   "options": "Sales Taxes and Charges Template"
+  },
+  {
+   "fieldname": "tax_category",
+   "fieldtype": "Link",
+   "label": "Tax Category",
+   "options": "Tax Category"
+  },
+  {
+   "default": "Grand Total",
+   "fieldname": "apply_discount_on",
+   "fieldtype": "Select",
+   "label": "Apply Discount On",
+   "options": "Grand Total\nNet Total"
+  },
+  {
+   "fieldname": "column_break_pos_acc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "income_account",
+   "fieldtype": "Link",
+   "label": "Income Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "expense_account",
+   "fieldtype": "Link",
+   "label": "Expense Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "section_pos_print",
+   "fieldtype": "Section Break",
+   "label": "Print Settings"
+  },
+  {
+   "fieldname": "print_format",
+   "fieldtype": "Link",
+   "label": "Print Format",
+   "options": "Print Format"
+  },
+  {
+   "fieldname": "letter_head",
+   "fieldtype": "Link",
+   "label": "Letter Head",
+   "options": "Letter Head"
+  },
+  {
+   "fieldname": "column_break_pos_print",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tc_name",
+   "fieldtype": "Link",
+   "label": "Terms and Conditions",
+   "options": "Terms and Conditions"
+  },
+  {
+   "fieldname": "select_print_heading",
+   "fieldtype": "Link",
+   "label": "Print Heading",
+   "options": "Print Heading"
   }
  ],
  "index_web_pages_for_search": 0,
