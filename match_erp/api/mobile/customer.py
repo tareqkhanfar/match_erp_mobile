@@ -1,7 +1,9 @@
 """Customer CRUD endpoints for Match ERP Mobile.
 
-Client-side toggles in Settings decide whether to expose these, but
-permissions are still enforced server-side via frappe.get_doc().
+The Dist POS Profile decides whether create/edit is permitted. The mobile
+UI hides the actions per profile, and we re-check here server-side so an
+old build or tampered request can't bypass the configuration. Frappe's
+own DocType permissions still apply on top via frappe.get_doc().
 """
 
 from __future__ import annotations
@@ -9,11 +11,17 @@ from __future__ import annotations
 import frappe
 
 from match_erp.api.mobile.envelope import fail, mobile_endpoint, ok, parse_body
+from match_erp.match_erp.doctype.dist_pos_profile.dist_pos_profile import is_allowed
 
 
 @frappe.whitelist()
 @mobile_endpoint
 def create(**kwargs):
+	if not is_allowed("allow_customer_create"):
+		return fail(
+			"Creating customers is not permitted by your profile.",
+			"إنشاء العملاء غير مسموح به وفق ملفك.",
+		)
 	body = parse_body()
 	if not body.get("customer_name"):
 		return fail("customer_name is required", "اسم العميل مطلوب")
@@ -242,6 +250,11 @@ def get_ledger(**kwargs):
 @frappe.whitelist()
 @mobile_endpoint
 def update(**kwargs):
+	if not is_allowed("allow_customer_edit"):
+		return fail(
+			"Editing customers is not permitted by your profile.",
+			"تعديل العملاء غير مسموح به وفق ملفك.",
+		)
 	body = parse_body()
 	name = body.get("name")
 	data = body.get("data") or {}

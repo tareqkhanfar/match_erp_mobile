@@ -153,12 +153,64 @@ def _build_items(items_payload: list[dict], schedule_date: str | None = None) ->
 	return rows
 
 
+def _enforce_profile(doctype: str, payload: dict) -> tuple[bool, str, str]:
+	"""Apply Dist POS Profile rules server-side. The mobile UI already
+	hides/disables actions per profile, but we re-check here because the
+	client is untrusted — an old build or a tampered request must not be
+	able to exceed the configured discount cap.
+
+	Returns (ok, en, ar). Only enforces on sales documents (profiles are
+	a sales-side concept); purchase docs pass through.
+	"""
+	if doctype not in SALES_DOCTYPES:
+		return True, "", ""
+	try:
+		from match_erp.match_erp.doctype.dist_pos_profile.dist_pos_profile import (
+			resolve_for_user,
+		)
+
+		profile = resolve_for_user(frappe.session.user)
+	except Exception:
+		profile = None
+	if profile is None:
+		return True, "", ""
+
+	max_disc = float(profile.get("max_discount_pct") or 100)
+	allow_discount_change = bool(profile.get("allow_discount_change"))
+
+	for i, line in enumerate(payload.get("items") or [], start=1):
+		try:
+			disc = float(line.get("discount_percentage") or 0)
+		except (TypeError, ValueError):
+			disc = 0.0
+		# If the profile forbids discount edits, any non-zero discount is
+		# rejected outright.
+		if not allow_discount_change and disc > 0:
+			return (
+				False,
+				f"Discount is not permitted by your profile (line {i}).",
+				f"الخصم غير مسموح به وفق ملفك (السطر {i}).",
+			)
+		if disc > max_disc:
+			return (
+				False,
+				f"Discount {disc:g}% exceeds the allowed maximum of {max_disc:g}% (line {i}).",
+				f"الخصم {disc:g}% يتجاوز الحد المسموح {max_disc:g}% (السطر {i}).",
+			)
+	return True, "", ""
+
+
 def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict:
 	"""Create a sales/purchase document (or return) from the generic mobile payload."""
 
 	valid, en, ar = _validate_payload(payload, doctype, is_return)
 	if not valid:
 		return fail(en, ar)
+
+	# Server-side profile enforcement (discount cap, discount permission).
+	ok_profile, pen, par = _enforce_profile(doctype, payload)
+	if not ok_profile:
+		return fail(pen, par)
 
 	local_id = payload["local_id"]
 

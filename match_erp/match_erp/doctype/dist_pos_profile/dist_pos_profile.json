@@ -1,0 +1,340 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:profile_name",
+ "creation": "2026-06-08 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "profile_name",
+  "disabled",
+  "is_default",
+  "column_break_head",
+  "company",
+  "applicable_for_users",
+  "tab_business",
+  "section_business",
+  "default_doc_type",
+  "selling_price_list",
+  "default_warehouse",
+  "column_break_business",
+  "default_customer",
+  "currency",
+  "max_discount_pct",
+  "section_permissions",
+  "allow_customer_create",
+  "allow_customer_edit",
+  "column_break_perm",
+  "allow_item_create",
+  "allow_item_edit",
+  "section_voucher_rules",
+  "confirm_before_submit",
+  "allow_rate_change",
+  "column_break_vrules",
+  "allow_discount_change",
+  "validate_stock_on_save",
+  "tab_ui",
+  "section_ui",
+  "compact_mode",
+  "show_images",
+  "tab_sync",
+  "section_sync",
+  "sync_page_size",
+  "auto_sync_on_launch",
+  "column_break_sync",
+  "sync_over_mobile_data",
+  "tab_company",
+  "section_company",
+  "company_address",
+  "company_phone",
+  "column_break_company",
+  "company_email",
+  "company_tax_id",
+  "company_logo"
+ ],
+ "fields": [
+  {
+   "fieldname": "profile_name",
+   "fieldtype": "Data",
+   "label": "Profile Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
+  },
+  {
+   "default": "0",
+   "description": "Used for any logged-in user who isn't explicitly listed in another profile.",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "label": "Default Profile",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "description": "Mobile users this profile applies to. Leave empty + tick 'Default Profile' to apply to everyone not otherwise mapped.",
+   "fieldname": "applicable_for_users",
+   "fieldtype": "Table",
+   "label": "Applicable for Users",
+   "options": "POS Profile User"
+  },
+  {
+   "fieldname": "tab_business",
+   "fieldtype": "Tab Break",
+   "label": "Business"
+  },
+  {
+   "fieldname": "section_business",
+   "fieldtype": "Section Break",
+   "label": "Defaults"
+  },
+  {
+   "default": "Sales Invoice",
+   "fieldname": "default_doc_type",
+   "fieldtype": "Select",
+   "label": "Default Document Type",
+   "options": "Sales Invoice\nSales Order"
+  },
+  {
+   "fieldname": "selling_price_list",
+   "fieldtype": "Link",
+   "label": "Default Price List",
+   "options": "Price List"
+  },
+  {
+   "fieldname": "default_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "column_break_business",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_customer",
+   "fieldtype": "Link",
+   "label": "Default Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "default": "100",
+   "description": "Maximum discount % a mobile user may apply on a line. Enforced server-side on submit.",
+   "fieldname": "max_discount_pct",
+   "fieldtype": "Percent",
+   "label": "Max Discount %"
+  },
+  {
+   "fieldname": "section_permissions",
+   "fieldtype": "Section Break",
+   "label": "Permissions"
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_customer_create",
+   "fieldtype": "Check",
+   "label": "Allow Creating Customers"
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_customer_edit",
+   "fieldtype": "Check",
+   "label": "Allow Editing Customers"
+  },
+  {
+   "fieldname": "column_break_perm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_item_create",
+   "fieldtype": "Check",
+   "label": "Allow Creating Items"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_item_edit",
+   "fieldtype": "Check",
+   "label": "Allow Editing Items"
+  },
+  {
+   "fieldname": "section_voucher_rules",
+   "fieldtype": "Section Break",
+   "label": "Voucher Rules"
+  },
+  {
+   "default": "1",
+   "fieldname": "confirm_before_submit",
+   "fieldtype": "Check",
+   "label": "Confirm Before Submit"
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_rate_change",
+   "fieldtype": "Check",
+   "label": "Allow User to Edit Rate"
+  },
+  {
+   "fieldname": "column_break_vrules",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_discount_change",
+   "fieldtype": "Check",
+   "label": "Allow User to Edit Discount"
+  },
+  {
+   "default": "0",
+   "fieldname": "validate_stock_on_save",
+   "fieldtype": "Check",
+   "label": "Validate Stock on Save"
+  },
+  {
+   "fieldname": "tab_ui",
+   "fieldtype": "Tab Break",
+   "label": "Appearance"
+  },
+  {
+   "fieldname": "section_ui",
+   "fieldtype": "Section Break",
+   "label": "Appearance"
+  },
+  {
+   "default": "0",
+   "fieldname": "compact_mode",
+   "fieldtype": "Check",
+   "label": "Compact Mode"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_images",
+   "fieldtype": "Check",
+   "label": "Show Item Images"
+  },
+  {
+   "fieldname": "tab_sync",
+   "fieldtype": "Tab Break",
+   "label": "Sync"
+  },
+  {
+   "fieldname": "section_sync",
+   "fieldtype": "Section Break",
+   "label": "Sync"
+  },
+  {
+   "default": "500",
+   "fieldname": "sync_page_size",
+   "fieldtype": "Int",
+   "label": "Sync Page Size"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_sync_on_launch",
+   "fieldtype": "Check",
+   "label": "Auto Sync on Launch"
+  },
+  {
+   "fieldname": "column_break_sync",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "sync_over_mobile_data",
+   "fieldtype": "Check",
+   "label": "Sync over Mobile Data"
+  },
+  {
+   "fieldname": "tab_company",
+   "fieldtype": "Tab Break",
+   "label": "Company / Branding"
+  },
+  {
+   "fieldname": "section_company",
+   "fieldtype": "Section Break",
+   "label": "Printed on Vouchers"
+  },
+  {
+   "fieldname": "company_address",
+   "fieldtype": "Small Text",
+   "label": "Company Address"
+  },
+  {
+   "fieldname": "company_phone",
+   "fieldtype": "Data",
+   "label": "Company Phone"
+  },
+  {
+   "fieldname": "column_break_company",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company_email",
+   "fieldtype": "Data",
+   "label": "Company Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "company_tax_id",
+   "fieldtype": "Data",
+   "label": "Company Tax ID"
+  },
+  {
+   "fieldname": "company_logo",
+   "fieldtype": "Attach Image",
+   "label": "Company Logo"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-06-08 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Match Erp",
+ "name": "Dist POS Profile",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales Manager"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

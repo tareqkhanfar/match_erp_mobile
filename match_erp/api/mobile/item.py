@@ -17,6 +17,7 @@ from __future__ import annotations
 import frappe
 
 from match_erp.api.mobile.envelope import fail, mobile_endpoint, ok, parse_body
+from match_erp.match_erp.doctype.dist_pos_profile.dist_pos_profile import is_allowed
 
 
 # Top-level keys that aren't real Item fields — extracted before insert.
@@ -67,6 +68,11 @@ def _apply_children(doc, barcodes: list[dict], uoms: list[dict]) -> None:
 @frappe.whitelist()
 @mobile_endpoint
 def create(**kwargs):
+	if not is_allowed("allow_item_create", default=False):
+		return fail(
+			"Creating items is not permitted by your profile.",
+			"إنشاء الأصناف غير مسموح به وفق ملفك.",
+		)
 	body = parse_body()
 	if not body.get("item_code"):
 		return fail("item_code is required", "رمز الصنف مطلوب")
@@ -82,6 +88,11 @@ def create(**kwargs):
 @frappe.whitelist()
 @mobile_endpoint
 def update(**kwargs):
+	if not is_allowed("allow_item_edit", default=False):
+		return fail(
+			"Editing items is not permitted by your profile.",
+			"تعديل الأصناف غير مسموح به وفق ملفك.",
+		)
 	body = parse_body()
 	name = body.get("name")
 	data = body.get("data") or {}

@@ -13,7 +13,12 @@ from match_erp.api.mobile.envelope import fail, mobile_endpoint, ok, parse_body
 
 
 def _user_info(user: str) -> dict:
-	"""Shared shape for login responses and get_current_user_info."""
+	"""Shared shape for login responses and get_current_user_info.
+
+	Includes the resolved Dist POS Profile under `settings` so the mobile
+	app gets its (read-only) configuration in the same call it
+	authenticates — no extra round-trip on launch.
+	"""
 	if not user or user == "Guest":
 		return {}
 	full_name, email, user_image = frappe.db.get_value(
@@ -23,6 +28,24 @@ def _user_info(user: str) -> dict:
 		frappe.defaults.get_user_default("Company", user)
 		or frappe.db.get_single_value("Global Defaults", "default_company")
 	)
+
+	# Resolve the settings profile. Never let a profile-resolution error
+	# block login — fall back to defaults.
+	settings = None
+	try:
+		from match_erp.match_erp.doctype.dist_pos_profile.dist_pos_profile import (
+			resolve_for_user,
+			serialize,
+		)
+
+		settings = serialize(resolve_for_user(user))
+	except Exception:
+		settings = None
+
+	# Prefer the profile's company when it sets one.
+	if settings and settings.get("company"):
+		default_company = settings["company"] or default_company
+
 	return {
 		"user_name": user,
 		"full_name": full_name,
@@ -30,6 +53,7 @@ def _user_info(user: str) -> dict:
 		"user_image": user_image,
 		"roles": frappe.get_roles(user),
 		"default_company": default_company,
+		"settings": settings,
 	}
 
 
