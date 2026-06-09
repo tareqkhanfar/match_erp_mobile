@@ -115,12 +115,34 @@ def _validate_payload(payload: dict, doctype: str, is_return: bool) -> tuple[boo
 					f"يجب أن تكون الكمية أكبر من صفر في السطر {i}",
 				)
 
-	if payload.get("is_paid") and not payload.get("mode_of_payment"):
-		return (
-			False,
-			"mode_of_payment is required when is_paid = true",
-			"وسيلة الدفع مطلوبة عند تفعيل خيار مدفوع",
-		)
+	if payload.get("is_paid"):
+		mop = payload.get("mode_of_payment")
+		if not mop:
+			return (
+				False,
+				"mode_of_payment is required when is_paid = true",
+				"وسيلة الدفع مطلوبة عند تفعيل خيار مدفوع",
+			)
+		# A paid invoice creates a Payment Entry, which needs the mode of
+		# payment to have a bank/cash account configured for this company.
+		# Validate UP FRONT so we never post an invoice that we then can't
+		# mark paid (which previously left it silently "Unpaid").
+		if doctype in INVOICE_DOCTYPES:
+			company = payload.get("company")
+			account = frappe.db.get_value(
+				"Mode of Payment Account",
+				{"parent": mop, "company": company},
+				"default_account",
+			)
+			if not account:
+				return (
+					False,
+					f"Mode of Payment '{mop}' has no default account for "
+					f"company '{company}'. Configure it in ERPNext before "
+					f"taking paid invoices.",
+					f"وسيلة الدفع '{mop}' ليس لها حساب افتراضي للشركة "
+					f"'{company}'. يرجى ضبطها في ERPNext قبل إنشاء فواتير مدفوعة.",
+				)
 
 	return True, "", ""
 
@@ -360,6 +382,14 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 				{"parent": mop, "company": doc.company},
 				"default_account",
 			)
+			# Defensive: _validate_payload already checked this, but guard
+			# again so we never insert a Payment Entry with an empty
+			# paid_to/paid_from (which would post the invoice as unpaid).
+			if not bank_account:
+				raise frappe.ValidationError(
+					f"Mode of Payment '{mop}' has no default account for "
+					f"company '{doc.company}'."
+				)
 			is_sales = doctype == "Sales Invoice"
 			pe_data = {
 				"doctype": "Payment Entry",
@@ -389,8 +419,22 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 			pe.insert(ignore_permissions=True)
 			pe.submit()
 		except Exception as pe_err:
-			# Payment entry failure is non-fatal — invoice is still created.
-			frappe.log_error(f"Payment Entry failed for {doc.name}: {pe_err}")
+			# The client asked for a PAID invoice. If we can't create the
+			# Payment Entry we must NOT leave a posted-but-unpaid invoice
+			# and report success — that silently loses the payment. Roll
+			# the whole transaction back and surface the error so the
+			# client can fix the configuration and retry.
+			frappe.log_error(
+				title=f"Payment Entry failed for {doc.name}",
+				message=frappe.get_traceback(),
+			)
+			frappe.db.rollback()
+			return fail(
+				f"Invoice not created: could not record payment for mode "
+				f"'{payload.get('mode_of_payment')}'. {pe_err}",
+				f"لم يتم إنشاء الفاتورة: تعذّر تسجيل الدفعة لوسيلة الدفع "
+				f"'{payload.get('mode_of_payment')}'.",
+			)
 
 	frappe.db.commit()
 
