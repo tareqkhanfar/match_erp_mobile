@@ -100,6 +100,60 @@ def get(**kwargs):
 
 @frappe.whitelist()
 @mobile_endpoint
+def get_balance(**kwargs):
+	"""Live receivable balance for a customer — used when a voucher print
+	format is configured to show the customer's balance.
+
+	Returns the true ledger balance (invoices minus payments / credits)
+	from GL Entry against the party, plus the company's default currency.
+	A positive `balance` means the customer owes us.
+	"""
+	body = parse_body()
+	name = body.get("name")
+	if not name:
+		return fail("name is required", "اسم العميل مطلوب")
+	if not frappe.db.exists("Customer", name):
+		return fail("Customer not found", "العميل غير موجود")
+
+	company = body.get("company") or frappe.db.get_single_value(
+		"Global Defaults", "default_company"
+	)
+
+	# True party balance from the GL: SUM(debit - credit) over all
+	# non-cancelled entries for this customer. This nets invoices against
+	# payments/credit notes — unlike the Sales-Invoice-only `outstanding`.
+	filters = ["party_type = %s", "party = %s", "is_cancelled = 0"]
+	args: list = ["Customer", name]
+	if company:
+		filters.append("company = %s")
+		args.append(company)
+	row = frappe.db.sql(
+		f"""
+		SELECT COALESCE(SUM(debit - credit), 0)
+		FROM `tabGL Entry`
+		WHERE {" AND ".join(filters)}
+		""",
+		tuple(args),
+	)
+	balance = float(row[0][0]) if row and row[0] and row[0][0] is not None else 0.0
+
+	currency = frappe.db.get_value("Customer", name, "default_currency")
+	if not currency and company:
+		currency = frappe.db.get_value("Company", company, "default_currency")
+
+	return ok(
+		{
+			"customer": name,
+			"balance": balance,
+			"currency": currency or "",
+		},
+		en="Balance fetched",
+		ar="تم جلب الرصيد",
+	)
+
+
+@frappe.whitelist()
+@mobile_endpoint
 def get_ledger(**kwargs):
 	"""Customer general ledger — online-only, pulled live from `tabGL Entry`.
 

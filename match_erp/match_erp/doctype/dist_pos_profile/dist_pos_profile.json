@@ -33,6 +33,7 @@
   "column_break_vrules",
   "allow_discount_change",
   "validate_stock_on_save",
+  "show_customer_balance_on_voucher",
   "tab_ui",
   "section_ui",
   "compact_mode",
@@ -239,6 +240,13 @@
    "fieldname": "validate_stock_on_save",
    "fieldtype": "Check",
    "label": "Validate Stock on Save"
+  },
+  {
+   "default": "0",
+   "description": "When enabled, the customer's current outstanding balance (fetched live from ERPNext) is printed on Sales Invoices, Payment Entries, and other customer vouchers.",
+   "fieldname": "show_customer_balance_on_voucher",
+   "fieldtype": "Check",
+   "label": "Show Customer Balance on Vouchers"
   },
   {
    "fieldname": "tab_ui",
