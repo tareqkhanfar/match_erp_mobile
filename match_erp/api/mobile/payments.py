@@ -27,6 +27,7 @@ Payload:
 from __future__ import annotations
 
 import frappe
+from frappe.utils import flt
 
 from match_erp.api.mobile.envelope import fail, mobile_endpoint, ok, parse_body
 
@@ -127,17 +128,46 @@ def _create_payment(payment_type: str) -> dict:
 	if payload.get("notes"):
 		doc_data["remarks"] = payload["notes"]
 
-	# Optional reference to an invoice/order.
-	ref_doctype = payload.get("reference_doctype")
-	ref_name = payload.get("reference_name")
-	if ref_doctype and ref_name:
-		doc_data["references"] = [
-			{
-				"reference_doctype": ref_doctype,
-				"reference_name": ref_name,
-				"allocated_amount": paid_amount,
-			}
-		]
+	# References to invoices/orders this payment settles. Two shapes are
+	# accepted:
+	#   1. A `references` list: [{reference_doctype, reference_name,
+	#      allocated_amount}, ...] — the multi-invoice case.
+	#   2. Legacy single ref: reference_doctype + reference_name (the whole
+	#      paid_amount is allocated to it).
+	# References to docs that don't exist (e.g. an invoice that failed to
+	# submit upstream) are silently skipped so the payment still posts.
+	references = payload.get("references")
+	ref_rows: list[dict] = []
+	if isinstance(references, list) and references:
+		for ref in references:
+			if not isinstance(ref, dict):
+				continue
+			r_dt = ref.get("reference_doctype") or "Sales Invoice"
+			r_name = ref.get("reference_name")
+			if not r_name or not frappe.db.exists(r_dt, r_name):
+				continue
+			alloc = flt(ref.get("allocated_amount")) or paid_amount
+			ref_rows.append(
+				{
+					"reference_doctype": r_dt,
+					"reference_name": r_name,
+					"allocated_amount": alloc,
+				}
+			)
+	else:
+		ref_doctype = payload.get("reference_doctype")
+		ref_name = payload.get("reference_name")
+		if ref_doctype and ref_name and frappe.db.exists(ref_doctype, ref_name):
+			ref_rows.append(
+				{
+					"reference_doctype": ref_doctype,
+					"reference_name": ref_name,
+					"allocated_amount": paid_amount,
+				}
+			)
+
+	if ref_rows:
+		doc_data["references"] = ref_rows
 
 	# Resolve paid_from / paid_to from the Mode of Payment Account child
 	# table when the client didn't send them explicitly. Without these,

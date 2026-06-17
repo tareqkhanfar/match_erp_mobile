@@ -758,3 +758,106 @@ def get_warehouses(**kwargs):
 		en="Warehouses synced",
 		ar="تمت مزامنة المستودعات",
 	)
+
+
+# ---------------------------------------------------------------------------
+# Voucher status refresh — the mobile app stores submitted vouchers locally
+# and periodically asks the server for their current status + paid/outstanding
+# amounts so it can show paid/unpaid/cancelled badges and remaining balances
+# without a full re-sync.
+# ---------------------------------------------------------------------------
+
+# Which fields carry the totals/outstanding for each supported doctype. The
+# normalized output is always {status, docstatus, grand_total, paid_amount,
+# outstanding_amount}.
+_STATUS_DOCTYPES = {
+	"Sales Invoice": True,
+	"Purchase Invoice": True,
+	"Sales Order": False,
+	"Purchase Order": False,
+	"Payment Entry": False,
+}
+
+
+def _normalize_status(doctype: str, row: dict) -> dict:
+	"""Map a raw doc row to the mobile status envelope."""
+	from frappe.utils import flt as _flt
+
+	docstatus = int(row.get("docstatus") or 0)
+	grand_total = _flt(row.get("grand_total") or row.get("paid_amount") or 0)
+	outstanding = _flt(row.get("outstanding_amount") or 0)
+
+	if docstatus == 2:
+		simple = "Cancelled"
+	elif doctype in ("Sales Invoice", "Purchase Invoice"):
+		# Use ERPNext's own status string but also derive a simple paid flag.
+		simple = row.get("status") or ("Paid" if outstanding <= 0 else "Unpaid")
+	else:
+		simple = row.get("status") or ("Submitted" if docstatus == 1 else "Draft")
+
+	paid = grand_total - outstanding if grand_total else 0.0
+	return {
+		"status": simple,
+		"docstatus": docstatus,
+		"grand_total": grand_total,
+		"paid_amount": _flt(paid),
+		"outstanding_amount": outstanding,
+	}
+
+
+@frappe.whitelist()
+@mobile_endpoint
+def get_voucher_statuses(**kwargs):
+	"""Batch status lookup.
+
+	Body: refs = [{doc_type, name}, ...]  (or names grouped per doctype).
+	Returns: { statuses: { <remote_name>: {status, docstatus, grand_total,
+	          paid_amount, outstanding_amount} } } — keyed by remote name.
+	Names not found (e.g. deleted upstream) are omitted.
+	"""
+	body = parse_body()
+	refs = body.get("refs") or []
+	if isinstance(refs, str):
+		import json as _json
+
+		try:
+			refs = _json.loads(refs)
+		except (ValueError, TypeError):
+			refs = []
+
+	# Group requested names by doctype so we issue one query per doctype.
+	by_doctype: dict[str, list[str]] = {}
+	for ref in refs:
+		if not isinstance(ref, dict):
+			continue
+		dt = ref.get("doc_type") or ref.get("doctype")
+		name = ref.get("name")
+		if not dt or not name or dt not in _STATUS_DOCTYPES:
+			continue
+		by_doctype.setdefault(dt, []).append(name)
+
+	statuses: dict[str, dict] = {}
+	for dt, names in by_doctype.items():
+		has_outstanding = _STATUS_DOCTYPES[dt]
+		fields = ["name", "docstatus", "status"]
+		if has_outstanding:
+			fields += ["grand_total", "outstanding_amount"]
+		elif dt == "Payment Entry":
+			fields += ["paid_amount"]
+		else:
+			fields += ["grand_total"]
+
+		rows = frappe.get_all(
+			dt,
+			filters={"name": ["in", list(set(names))]},
+			fields=fields,
+			limit_page_length=0,
+		)
+		for row in rows:
+			statuses[row["name"]] = _normalize_status(dt, row)
+
+	return ok(
+		{"statuses": statuses},
+		en="Voucher statuses fetched",
+		ar="تم جلب حالات السندات",
+	)
