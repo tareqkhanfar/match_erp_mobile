@@ -167,6 +167,17 @@ def _create_payment(payment_type: str) -> dict:
 			)
 
 	if ref_rows:
+		# A payment can't allocate more across its invoices than it pays.
+		# ERPNext would reject this on validate; we fail early with a clear
+		# bilingual message (allow a tiny rounding epsilon).
+		total_allocated = sum(flt(r["allocated_amount"]) for r in ref_rows)
+		if total_allocated - paid_amount > 0.005:
+			return fail(
+				f"Total allocated to invoices ({total_allocated:.2f}) exceeds "
+				f"the paid amount ({paid_amount:.2f})",
+				f"إجمالي المخصص للفواتير ({total_allocated:.2f}) أكبر من المبلغ "
+				f"المدفوع ({paid_amount:.2f})",
+			)
 		doc_data["references"] = ref_rows
 
 	# Resolve paid_from / paid_to from the Mode of Payment Account child
