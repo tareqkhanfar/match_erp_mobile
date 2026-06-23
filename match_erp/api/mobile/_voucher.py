@@ -175,6 +175,32 @@ def _build_items(items_payload: list[dict], schedule_date: str | None = None) ->
 	return rows
 
 
+def resolve_profile_name(payload: dict) -> str | None:
+	"""Resolve the Dist POS Profile name that should tag a voucher.
+
+	Order:
+	  1. `dist_pos_profile` from the payload (the device's active profile),
+	     if it names an existing profile.
+	  2. The server-resolved profile for the session user.
+	Returns None when neither resolves — the voucher is then left untagged
+	(i.e. treated as created directly in ERPNext).
+	"""
+	supplied = payload.get("dist_pos_profile")
+	if supplied and frappe.db.exists("Dist POS Profile", supplied):
+		return supplied
+	try:
+		from match_erp.match_erp.doctype.dist_pos_profile.dist_pos_profile import (
+			resolve_for_user,
+		)
+
+		profile = resolve_for_user(frappe.session.user)
+		if profile is not None:
+			return profile.get("name")
+	except Exception:
+		pass
+	return None
+
+
 def _enforce_profile(doctype: str, payload: dict) -> tuple[bool, str, str]:
 	"""Apply Dist POS Profile rules server-side. The mobile UI already
 	hides/disables actions per profile, but we re-check here because the
@@ -288,6 +314,12 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 		"items": _build_items(payload.get("items") or [], schedule_date=header_schedule_date),
 		"custom_mobile_local_id": local_id,
 	}
+
+	# Tag the voucher with the Dist POS Profile that created it from mobile.
+	# Empty stays empty → "created in ERPNext, not from mobile".
+	profile_name = resolve_profile_name(payload)
+	if profile_name and frappe.db.has_column(doctype, "custom_dist_pos_profile"):
+		doc_data["custom_dist_pos_profile"] = profile_name
 
 	# Exchange rate: when the voucher currency matches the company currency
 	# the rate is 1.0 — pass it explicitly so ERPNext's validate doesn't
@@ -409,6 +441,11 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 				"reference_no": doc.name,
 				"reference_date": doc.posting_date or frappe.utils.today(),
 			}
+			# Carry the same Dist POS Profile tag onto the auto-payment.
+			if profile_name and frappe.db.has_column(
+				"Payment Entry", "custom_dist_pos_profile"
+			):
+				pe_data["custom_dist_pos_profile"] = profile_name
 			# Sales Invoice → money flows INTO a bank/cash account (paid_to).
 			# Purchase Invoice → money flows OUT of a bank/cash account (paid_from).
 			if is_sales:

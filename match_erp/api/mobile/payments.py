@@ -128,6 +128,13 @@ def _create_payment(payment_type: str) -> dict:
 	if payload.get("notes"):
 		doc_data["remarks"] = payload["notes"]
 
+	# Tag the payment with the Dist POS Profile that created it from mobile.
+	from match_erp.api.mobile._voucher import resolve_profile_name
+
+	profile_name = resolve_profile_name(payload)
+	if profile_name and frappe.db.has_column("Payment Entry", "custom_dist_pos_profile"):
+		doc_data["custom_dist_pos_profile"] = profile_name
+
 	# References to invoices/orders this payment settles. Two shapes are
 	# accepted:
 	#   1. A `references` list: [{reference_doctype, reference_name,
