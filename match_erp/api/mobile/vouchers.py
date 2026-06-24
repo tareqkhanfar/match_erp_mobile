@@ -501,55 +501,40 @@ def _detail(doctype: str) -> dict:
 	if not frappe.db.exists(doctype, name):
 		return fail(f"{doctype} not found", "المستند غير موجود")
 
-	doc = frappe.get_doc(doctype, name)
-	if not doc.has_permission("read"):
-		return fail("Permission denied", "ليس لديك صلاحية")
-
-	# Optional but recommended: enforce tenant isolation on detail too. When
-	# the caller passes its profile, a document tagged with a different
-	# profile is hidden.
+	# Tenant isolation on detail too: when the caller passes its profile, a
+	# document tagged with a different profile is hidden.
 	req_profile = body.get(PROFILE_API_FIELD)
-	if req_profile and (doc.get(PROFILE_DB_FIELD) or None) != req_profile:
+	doc_profile = frappe.db.get_value(doctype, name, PROFILE_DB_FIELD)
+	if req_profile and (doc_profile or None) != req_profile:
 		return fail(f"{doctype} not found", "المستند غير موجود")
 
-	# Detail returns the FULL document so the mobile app has every attribute
-	# it might need (all header fields + all child tables: items, taxes,
-	# payment schedule, references, …). `as_dict` serializes child tables too.
-	data = doc.as_dict()
+	# Permission check (read).
+	if not frappe.has_permission(doctype, "read", doc=name):
+		return fail("Permission denied", "ليس لديك صلاحية")
 
-	# Drop noisy internal bits and JSON-serialize dates/decimals.
-	for k in ("_user_tags", "_comments", "_assign", "_liked_by", "doctype_links"):
-		data.pop(k, None)
-	clean = _jsonable(data)
+	cfg = _CONFIG[doctype]
 
-	# Expose the profile under the API field name.
-	if PROFILE_DB_FIELD in clean:
-		clean[PROFILE_API_FIELD] = clean.pop(PROFILE_DB_FIELD)
+	# Return EXACTLY the same shape as one list row: header fields (existing
+	# columns only) + child items/references attached.
+	rows = frappe.get_all(
+		doctype,
+		filters={"name": name},
+		fields=_existing_fields(doctype, cfg["list_fields"]),
+		limit_page_length=1,
+	)
+	if not rows:
+		return fail(f"{doctype} not found", "المستند غير موجود")
+
+	row = _alias_profile(rows[0])
+	_attach_children(doctype, [row])
 
 	# Convenience: Sales Invoice paid_amount derived from outstanding.
-	if doctype == "Sales Invoice":
-		clean.setdefault(
-			"paid_amount",
-			flt(data.get("grand_total")) - flt(data.get("outstanding_amount")),
+	if doctype == "Sales Invoice" and "paid_amount" not in row:
+		row["paid_amount"] = flt(row.get("grand_total")) - flt(
+			row.get("outstanding_amount")
 		)
 
-	return ok(clean, en=f"{doctype} fetched", ar="تم جلب المستند")
-
-
-def _jsonable(value):
-	"""Recursively coerce a Frappe doc dict into JSON-friendly primitives."""
-	import datetime
-	from decimal import Decimal
-
-	if isinstance(value, dict):
-		return {k: _jsonable(v) for k, v in value.items()}
-	if isinstance(value, (list, tuple)):
-		return [_jsonable(v) for v in value]
-	if isinstance(value, Decimal):
-		return flt(value)
-	if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
-		return str(value)
-	return value
+	return ok(row, en=f"{doctype} fetched", ar="تم جلب المستند")
 
 
 # ---------------------------------------------------------------------------
