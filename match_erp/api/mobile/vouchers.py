@@ -65,29 +65,74 @@ _CONFIG = {
 		"list_fields": [
 			"name",
 			"transaction_date",
+			"delivery_date",
 			"customer",
 			"customer_name",
+			"customer_group",
+			"territory",
+			"company",
 			"currency",
+			"conversion_rate",
+			"selling_price_list",
+			"po_no",
+			"po_date",
+			"total_qty",
+			"base_total",
+			"total",
+			"net_total",
+			"total_taxes_and_charges",
+			"apply_discount_on",
+			"additional_discount_percentage",
+			"discount_amount",
+			"rounding_adjustment",
+			"rounded_total",
 			"grand_total",
+			"advance_paid",
+			"per_delivered",
+			"per_billed",
 			"status",
 			"docstatus",
-			"delivery_date",
+			"order_type",
+			"contact_person",
+			"contact_mobile",
+			"contact_email",
+			"customer_address",
+			"shipping_address_name",
+			"tc_name",
+			"remarks",
+			"custom_mobile_local_id",
 			PROFILE_DB_FIELD,
+			"owner",
+			"creation",
 			"modified",
 		],
 		"filter_fields": {"name", "customer", "status", "docstatus", "company", "currency"},
 		"child_table": "items",
 		"item_fields": [
+			"idx",
 			"item_code",
 			"item_name",
+			"description",
+			"item_group",
 			"uom",
+			"conversion_factor",
+			"stock_uom",
 			"qty",
+			"stock_qty",
 			"price_list_rate",
+			"base_price_list_rate",
 			"rate",
+			"base_rate",
 			"discount_percentage",
 			"discount_amount",
 			"amount",
+			"base_amount",
+			"net_rate",
+			"net_amount",
+			"warehouse",
 			"delivery_date",
+			"delivered_qty",
+			"billed_amt",
 		],
 	},
 	"Sales Invoice": {
@@ -96,15 +141,49 @@ _CONFIG = {
 		"list_fields": [
 			"name",
 			"posting_date",
+			"posting_time",
+			"due_date",
 			"customer",
 			"customer_name",
+			"customer_group",
+			"territory",
+			"company",
 			"currency",
+			"conversion_rate",
+			"selling_price_list",
+			"is_return",
+			"return_against",
+			"is_pos",
+			"update_stock",
+			"po_no",
+			"po_date",
+			"total_qty",
+			"base_total",
+			"total",
+			"net_total",
+			"total_taxes_and_charges",
+			"apply_discount_on",
+			"additional_discount_percentage",
+			"discount_amount",
+			"rounding_adjustment",
+			"rounded_total",
 			"grand_total",
+			"total_advance",
 			"outstanding_amount",
+			"paid_amount",
 			"status",
 			"docstatus",
-			"is_return",
+			"contact_person",
+			"contact_mobile",
+			"contact_email",
+			"customer_address",
+			"shipping_address_name",
+			"tc_name",
+			"remarks",
+			"custom_mobile_local_id",
 			PROFILE_DB_FIELD,
+			"owner",
+			"creation",
 			"modified",
 		],
 		"filter_fields": {
@@ -118,15 +197,31 @@ _CONFIG = {
 		},
 		"child_table": "items",
 		"item_fields": [
+			"idx",
 			"item_code",
 			"item_name",
+			"description",
+			"item_group",
 			"uom",
+			"conversion_factor",
+			"stock_uom",
 			"qty",
+			"stock_qty",
 			"price_list_rate",
+			"base_price_list_rate",
 			"rate",
+			"base_rate",
 			"discount_percentage",
 			"discount_amount",
 			"amount",
+			"base_amount",
+			"net_rate",
+			"net_amount",
+			"warehouse",
+			"batch_no",
+			"serial_no",
+			"sales_order",
+			"so_detail",
 		],
 	},
 	"Payment Entry": {
@@ -136,15 +231,32 @@ _CONFIG = {
 			"name",
 			"posting_date",
 			"payment_type",
+			"mode_of_payment",
 			"party_type",
 			"party",
 			"party_name",
+			"company",
+			"paid_from",
+			"paid_from_account_currency",
+			"paid_to",
+			"paid_to_account_currency",
 			"paid_amount",
+			"base_paid_amount",
 			"received_amount",
-			"mode_of_payment",
+			"base_received_amount",
+			"source_exchange_rate",
+			"target_exchange_rate",
+			"total_allocated_amount",
+			"unallocated_amount",
+			"reference_no",
+			"reference_date",
 			"status",
 			"docstatus",
+			"remarks",
+			"custom_mobile_local_id",
 			PROFILE_DB_FIELD,
+			"owner",
+			"creation",
 			"modified",
 		],
 		"filter_fields": {
@@ -159,8 +271,10 @@ _CONFIG = {
 		},
 		"child_table": "references",
 		"item_fields": [
+			"idx",
 			"reference_doctype",
 			"reference_name",
+			"due_date",
 			"total_amount",
 			"outstanding_amount",
 			"allocated_amount",
@@ -365,70 +479,44 @@ def _detail(doctype: str) -> dict:
 	if req_profile and (doc.get(PROFILE_DB_FIELD) or None) != req_profile:
 		return fail(f"{doctype} not found", "المستند غير موجود")
 
-	cfg = _CONFIG[doctype]
+	# Detail returns the FULL document so the mobile app has every attribute
+	# it might need (all header fields + all child tables: items, taxes,
+	# payment schedule, references, …). `as_dict` serializes child tables too.
 	data = doc.as_dict()
 
-	child_rows = [
-		{f: _coerce(row.get(f)) for f in cfg["item_fields"]}
-		for row in (doc.get(cfg["child_table"]) or [])
-	]
+	# Drop noisy internal bits and JSON-serialize dates/decimals.
+	for k in ("_user_tags", "_comments", "_assign", "_liked_by", "doctype_links"):
+		data.pop(k, None)
+	clean = _jsonable(data)
 
-	header = {
-		"name": doc.name,
-		"doctype": doctype,
-		"status": data.get("status"),
-		"docstatus": doc.docstatus,
-		"company": data.get("company"),
-		"currency": data.get("currency"),
-		"posting_date": str(data.get("posting_date") or data.get("transaction_date") or ""),
-		PROFILE_API_FIELD: data.get(PROFILE_DB_FIELD),
-		"remarks": data.get("remarks"),
-	}
-	if doctype in ("Sales Order", "Sales Invoice"):
-		header.update(
-			{
-				"customer": data.get("customer"),
-				"customer_name": data.get("customer_name"),
-				"net_total": flt(data.get("net_total")),
-				"total_taxes_and_charges": flt(data.get("total_taxes_and_charges")),
-				"additional_discount_percentage": flt(data.get("additional_discount_percentage")),
-				"discount_amount": flt(data.get("discount_amount")),
-				"grand_total": flt(data.get("grand_total")),
-			}
-		)
-	if doctype == "Sales Order":
-		header["delivery_date"] = str(data.get("delivery_date") or "")
+	# Expose the profile under the API field name.
+	if PROFILE_DB_FIELD in clean:
+		clean[PROFILE_API_FIELD] = clean.pop(PROFILE_DB_FIELD)
+
+	# Convenience: Sales Invoice paid_amount derived from outstanding.
 	if doctype == "Sales Invoice":
-		header.update(
-			{
-				"outstanding_amount": flt(data.get("outstanding_amount")),
-				"paid_amount": flt(data.get("grand_total")) - flt(data.get("outstanding_amount")),
-				"is_return": data.get("is_return"),
-				"return_against": data.get("return_against"),
-			}
-		)
-	if doctype == "Payment Entry":
-		header.update(
-			{
-				"payment_type": data.get("payment_type"),
-				"party_type": data.get("party_type"),
-				"party": data.get("party"),
-				"party_name": data.get("party_name"),
-				"mode_of_payment": data.get("mode_of_payment"),
-				"paid_amount": flt(data.get("paid_amount")),
-				"received_amount": flt(data.get("received_amount")),
-				"paid_from": data.get("paid_from"),
-				"paid_to": data.get("paid_to"),
-			}
+		clean.setdefault(
+			"paid_amount",
+			flt(data.get("grand_total")) - flt(data.get("outstanding_amount")),
 		)
 
-	# Child rows: `items` for sales docs, `references` for Payment Entry. We
-	# expose both keys pointing at the same list for client convenience.
-	header["items"] = child_rows
-	if doctype == "Payment Entry":
-		header["references"] = child_rows
+	return ok(clean, en=f"{doctype} fetched", ar="تم جلب المستند")
 
-	return ok(header, en=f"{doctype} fetched", ar="تم جلب المستند")
+
+def _jsonable(value):
+	"""Recursively coerce a Frappe doc dict into JSON-friendly primitives."""
+	import datetime
+	from decimal import Decimal
+
+	if isinstance(value, dict):
+		return {k: _jsonable(v) for k, v in value.items()}
+	if isinstance(value, (list, tuple)):
+		return [_jsonable(v) for v in value]
+	if isinstance(value, Decimal):
+		return flt(value)
+	if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+		return str(value)
+	return value
 
 
 # ---------------------------------------------------------------------------
