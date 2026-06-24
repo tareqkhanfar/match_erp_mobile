@@ -256,6 +256,46 @@ def _coerce(value):
 	return str(value)
 
 
+# Child-table doctype per parent (for the batched list query).
+_CHILD_DOCTYPE = {
+	"Sales Order": "Sales Order Item",
+	"Sales Invoice": "Sales Invoice Item",
+	"Payment Entry": "Payment Entry Reference",
+}
+
+
+def _attach_children(doctype: str, rows: list[dict]) -> None:
+	"""Populate `items` (and `references` for Payment Entry) on each list row
+	using a single query against the child table for the whole page."""
+	if not rows:
+		return
+	cfg = _CONFIG[doctype]
+	child_dt = _CHILD_DOCTYPE[doctype]
+	parents = [r["name"] for r in rows]
+
+	# `parent` + `idx` keep rows grouped per voucher and ordered.
+	child_rows = frappe.get_all(
+		child_dt,
+		filters={"parent": ["in", parents], "parenttype": doctype},
+		fields=["parent", "idx", *cfg["item_fields"]],
+		order_by="parent asc, idx asc",
+	)
+
+	grouped: dict[str, list[dict]] = {}
+	for cr in child_rows:
+		parent = cr.pop("parent")
+		cr.pop("idx", None)
+		grouped.setdefault(parent, []).append(
+			{f: _coerce(cr.get(f)) for f in cfg["item_fields"]}
+		)
+
+	for r in rows:
+		items = grouped.get(r["name"], [])
+		r["items"] = items
+		if doctype == "Payment Entry":
+			r["references"] = items
+
+
 def _list(doctype: str) -> dict:
 	body = parse_body()
 
@@ -288,6 +328,10 @@ def _list(doctype: str) -> dict:
 		limit_page_length=page_size,
 	)
 	rows = [_alias_profile(r) for r in rows]
+
+	# Attach child rows (items / references) to every row on the page in a
+	# single batched query, so the list response is self-contained.
+	_attach_children(doctype, rows)
 
 	return ok(
 		{
