@@ -370,6 +370,36 @@ def _coerce(value):
 	return str(value)
 
 
+# Cache of existing columns per doctype so we don't probe the schema on every
+# request. Keeps the field lists robust against fields that don't exist on a
+# given doctype/version (e.g. `remarks` exists on Sales Invoice but not Sales
+# Order).
+_COLUMN_CACHE: dict[str, set] = {}
+
+
+def _existing_fields(doctype: str, fields: list[str]) -> list[str]:
+	"""Return only the fields that are real columns on `doctype`, preserving
+	order. `name` is always included."""
+	cols = _COLUMN_CACHE.get(doctype)
+	if cols is None:
+		meta = frappe.get_meta(doctype)
+		cols = {df.fieldname for df in meta.fields}
+		# Standard columns present on every doctype.
+		cols.update(
+			{
+				"name",
+				"owner",
+				"creation",
+				"modified",
+				"modified_by",
+				"docstatus",
+				"idx",
+			}
+		)
+		_COLUMN_CACHE[doctype] = cols
+	return [f for f in fields if f in cols or f == "name"]
+
+
 # Child-table doctype per parent (for the batched list query).
 _CHILD_DOCTYPE = {
 	"Sales Order": "Sales Order Item",
@@ -387,11 +417,14 @@ def _attach_children(doctype: str, rows: list[dict]) -> None:
 	child_dt = _CHILD_DOCTYPE[doctype]
 	parents = [r["name"] for r in rows]
 
+	# Only request columns that actually exist on the child doctype.
+	item_fields = _existing_fields(child_dt, cfg["item_fields"])
+
 	# `parent` + `idx` keep rows grouped per voucher and ordered.
 	child_rows = frappe.get_all(
 		child_dt,
 		filters={"parent": ["in", parents], "parenttype": doctype},
-		fields=["parent", "idx", *cfg["item_fields"]],
+		fields=["parent", "idx", *item_fields],
 		order_by="parent asc, idx asc",
 	)
 
@@ -400,7 +433,7 @@ def _attach_children(doctype: str, rows: list[dict]) -> None:
 		parent = cr.pop("parent")
 		cr.pop("idx", None)
 		grouped.setdefault(parent, []).append(
-			{f: _coerce(cr.get(f)) for f in cfg["item_fields"]}
+			{f: _coerce(cr.get(f)) for f in item_fields}
 		)
 
 	for r in rows:
@@ -436,7 +469,7 @@ def _list(doctype: str) -> dict:
 	rows = frappe.get_all(
 		doctype,
 		filters=filters,
-		fields=cfg["list_fields"],
+		fields=_existing_fields(doctype, cfg["list_fields"]),
 		order_by=f"{cfg['date_field']} desc, modified desc",
 		limit_start=(page - 1) * page_size,
 		limit_page_length=page_size,
