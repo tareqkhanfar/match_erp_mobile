@@ -353,3 +353,7 @@ def mobile_endpoint(fn):
 		if hasattr(fn, attr):
 			setattr(wrapper, attr, getattr(fn, attr))
 	return wrapper
+
+
+
+
