@@ -302,13 +302,15 @@ def _pagination(body: dict) -> tuple[int, int]:
 	return page, page_size
 
 
-def _build_filters(doctype: str, body: dict, profile: str) -> dict:
-	"""Compose ERPNext filters: MANDATORY profile scope (DB-level isolation)
-	+ whitelisted client filters + party + date range + modified_after."""
+def _build_filters(doctype: str, body: dict, profile: str | None) -> dict:
+	"""Compose ERPNext filters: optional profile scope + whitelisted client
+	filters + party + date range + modified_after."""
 	cfg = _CONFIG[doctype]
 
-	# Strict tenant isolation — always filter by the profile column.
-	filters: dict = {PROFILE_DB_FIELD: profile}
+	filters: dict = {}
+	# Optional tenant scope — only applied when a profile is supplied.
+	if profile:
+		filters[PROFILE_DB_FIELD] = profile
 
 	# Whitelisted equality filters.
 	client_filters = body.get("filters") or {}
@@ -446,18 +448,9 @@ def _attach_children(doctype: str, rows: list[dict]) -> None:
 def _list(doctype: str) -> dict:
 	body = parse_body()
 
-	# --- Mandatory tenant key ------------------------------------------------
+	# `dist_pos_profile` is OPTIONAL. When provided, results are scoped to it
+	# (tenant isolation); when omitted, vouchers are returned generally.
 	profile = body.get(PROFILE_API_FIELD)
-	if not profile:
-		return fail(
-			"dist_pos_profile is required",
-			"ملف نقاط البيع (Dist POS Profile) مطلوب",
-		)
-	if not frappe.db.exists("Dist POS Profile", profile):
-		return fail(
-			f"Dist POS Profile '{profile}' not found",
-			f"ملف نقاط البيع '{profile}' غير موجود",
-		)
 
 	cfg = _CONFIG[doctype]
 	page, page_size = _pagination(body)
