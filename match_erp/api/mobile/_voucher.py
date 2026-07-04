@@ -150,14 +150,41 @@ def _validate_payload(payload: dict, doctype: str, is_return: bool) -> tuple[boo
 def _build_items(items_payload: list[dict], schedule_date: str | None = None) -> list[dict]:
 	rows = []
 	for line in items_payload:
+		base_rate = float(line.get("rate") or 0)
+		disc_pct = float(line.get("discount_percentage") or 0)
+		disc_amt = float(line.get("discount_amount") or 0)
+
 		row = {
 			"item_code": line["item_code"],
 			"qty": float(line.get("qty") or 0),
 			"uom": line.get("uom") or None,
-			"rate": float(line.get("rate") or 0),
-			"discount_percentage": float(line.get("discount_percentage") or 0),
-			"discount_amount": float(line.get("discount_amount") or 0),
 		}
+
+		# Per-item discount handling. The client sends the ORIGINAL unit price
+		# in `rate` plus a separate per-unit discount. For ERPNext to actually
+		# apply and RECORD the discount on the line, we set `price_list_rate`
+		# to the base price and provide the discount; ERPNext then derives the
+		# net `rate`. We also pin `rate` to the computed net so a server-side
+		# price-list/pricing-rule lookup can't silently change the figure the
+		# user approved (the header sets ignore_pricing_rule=1 for the same
+		# reason).
+		if disc_pct > 0:
+			net_rate = base_rate * (1 - disc_pct / 100.0)
+			row["price_list_rate"] = base_rate
+			row["base_price_list_rate"] = base_rate
+			row["discount_percentage"] = disc_pct
+			row["rate"] = net_rate
+		elif disc_amt > 0:
+			net_rate = base_rate - disc_amt
+			if net_rate < 0:
+				net_rate = 0.0
+			row["price_list_rate"] = base_rate
+			row["base_price_list_rate"] = base_rate
+			row["discount_amount"] = disc_amt
+			row["rate"] = net_rate
+		else:
+			row["rate"] = base_rate
+
 		cf = line.get("conversion_factor")
 		if cf is not None:
 			try:
@@ -364,6 +391,10 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 		doc_data["customer"] = party
 		if payload.get("price_list"):
 			doc_data["selling_price_list"] = payload["price_list"]
+		# The client sends the exact per-item rate/discount the user approved.
+		# Skip Pricing Rules so ERPNext doesn't override those figures with an
+		# automatic rule during validate.
+		doc_data["ignore_pricing_rule"] = 1
 	elif doctype in PURCHASE_DOCTYPES:
 		doc_data["supplier"] = party
 		if payload.get("price_list"):
