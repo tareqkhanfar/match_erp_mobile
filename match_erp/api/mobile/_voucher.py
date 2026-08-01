@@ -151,6 +151,7 @@ def _build_items(
 	items_payload: list[dict],
 	schedule_date: str | None = None,
 	cost_center: str | None = None,
+	warehouse: str | None = None,
 ) -> list[dict]:
 	rows = []
 	for line in items_payload:
@@ -202,10 +203,12 @@ def _build_items(
 		if line_date:
 			row["delivery_date"] = line_date
 			row["schedule_date"] = line_date
-		# Cost center from the Dist POS Profile — set per line unless the line
-		# already carries one.
+		# Cost center + warehouse from the Dist POS Profile — set per line
+		# unless the line already carries its own.
 		if cost_center and not line.get("cost_center"):
 			row["cost_center"] = cost_center
+		if warehouse and not line.get("warehouse"):
+			row["warehouse"] = warehouse
 		rows.append(row)
 	return rows
 
@@ -342,17 +345,25 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 		or payload.get("posting_date")
 	)
 
-	# Resolve the Dist POS Profile that tags this voucher, and the Cost Center
-	# configured on it. The cost center flows onto the header and every item
-	# line so GL postings are attributed to the branch/profile.
+	# Resolve the Dist POS Profile that tags this voucher, plus the Cost Center
+	# and Warehouse configured on it. Both flow onto the header and every item
+	# line so stock moves and GL postings are attributed to the branch/profile.
 	profile_name = resolve_profile_name(payload)
 	profile_cost_center = None
+	profile_warehouse = None
 	if profile_name:
-		profile_cost_center = frappe.db.get_value(
-			"Dist POS Profile", profile_name, "cost_center"
-		) or None
-	# An explicit cost_center in the payload wins over the profile default.
+		prof = frappe.db.get_value(
+			"Dist POS Profile",
+			profile_name,
+			["cost_center", "default_warehouse"],
+			as_dict=True,
+		)
+		if prof:
+			profile_cost_center = prof.get("cost_center") or None
+			profile_warehouse = prof.get("default_warehouse") or None
+	# An explicit value in the payload wins over the profile default.
 	cost_center = payload.get("cost_center") or profile_cost_center
+	warehouse = payload.get("warehouse") or profile_warehouse
 
 	doc_data: dict = {
 		"doctype": doctype,
@@ -362,6 +373,7 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 			payload.get("items") or [],
 			schedule_date=header_schedule_date,
 			cost_center=cost_center,
+			warehouse=warehouse,
 		),
 		"custom_mobile_local_id": local_id,
 	}
@@ -375,6 +387,12 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 	# ERPNext ignores the field on doctypes that don't have it).
 	if cost_center and frappe.db.has_column(doctype, "cost_center"):
 		doc_data["cost_center"] = cost_center
+
+	# Header warehouse. ERPNext's "set warehouse for all items" field is
+	# `set_warehouse` on Sales/Purchase documents; the per-line `warehouse`
+	# set above is what actually drives the stock movement.
+	if warehouse and frappe.db.has_column(doctype, "set_warehouse"):
+		doc_data["set_warehouse"] = warehouse
 
 	# Exchange rate: when the voucher currency matches the company currency
 	# the rate is 1.0 — pass it explicitly so ERPNext's validate doesn't
