@@ -224,6 +224,168 @@ _CONFIG = {
 			"so_detail",
 		],
 	},
+	"Purchase Order": {
+		"date_field": "transaction_date",
+		"party_field": "supplier",
+		"list_fields": [
+			"name",
+			"transaction_date",
+			"schedule_date",
+			"supplier",
+			"supplier_name",
+			"supplier_group",
+			"company",
+			"currency",
+			"conversion_rate",
+			"buying_price_list",
+			"total_qty",
+			"base_total",
+			"total",
+			"net_total",
+			"total_taxes_and_charges",
+			"apply_discount_on",
+			"additional_discount_percentage",
+			"discount_amount",
+			"rounding_adjustment",
+			"rounded_total",
+			"grand_total",
+			"advance_paid",
+			"per_received",
+			"per_billed",
+			"status",
+			"docstatus",
+			"contact_person",
+			"contact_mobile",
+			"contact_email",
+			"supplier_address",
+			"tc_name",
+			"custom_mobile_local_id",
+			PROFILE_DB_FIELD,
+			"owner",
+			"creation",
+			"modified",
+		],
+		"filter_fields": {
+			"name",
+			"supplier",
+			"status",
+			"docstatus",
+			"company",
+			"currency",
+		},
+		"child_table": "items",
+		"item_fields": [
+			"idx",
+			"item_code",
+			"item_name",
+			"description",
+			"item_group",
+			"uom",
+			"conversion_factor",
+			"stock_uom",
+			"qty",
+			"stock_qty",
+			"received_qty",
+			"price_list_rate",
+			"base_price_list_rate",
+			"rate",
+			"base_rate",
+			"discount_percentage",
+			"discount_amount",
+			"amount",
+			"base_amount",
+			"net_rate",
+			"net_amount",
+			"warehouse",
+			"schedule_date",
+		],
+	},
+	"Purchase Invoice": {
+		"date_field": "posting_date",
+		"party_field": "supplier",
+		"list_fields": [
+			"name",
+			"posting_date",
+			"posting_time",
+			"due_date",
+			"bill_no",
+			"bill_date",
+			"supplier",
+			"supplier_name",
+			"supplier_group",
+			"company",
+			"currency",
+			"conversion_rate",
+			"buying_price_list",
+			"is_return",
+			"return_against",
+			"update_stock",
+			"total_qty",
+			"base_total",
+			"total",
+			"net_total",
+			"total_taxes_and_charges",
+			"apply_discount_on",
+			"additional_discount_percentage",
+			"discount_amount",
+			"rounding_adjustment",
+			"rounded_total",
+			"grand_total",
+			"total_advance",
+			"outstanding_amount",
+			"paid_amount",
+			"status",
+			"docstatus",
+			"contact_person",
+			"contact_mobile",
+			"contact_email",
+			"supplier_address",
+			"tc_name",
+			"remarks",
+			"custom_mobile_local_id",
+			PROFILE_DB_FIELD,
+			"owner",
+			"creation",
+			"modified",
+		],
+		"filter_fields": {
+			"name",
+			"supplier",
+			"status",
+			"docstatus",
+			"company",
+			"currency",
+			"is_return",
+		},
+		"child_table": "items",
+		"item_fields": [
+			"idx",
+			"item_code",
+			"item_name",
+			"description",
+			"item_group",
+			"uom",
+			"conversion_factor",
+			"stock_uom",
+			"qty",
+			"stock_qty",
+			"price_list_rate",
+			"base_price_list_rate",
+			"rate",
+			"base_rate",
+			"discount_percentage",
+			"discount_amount",
+			"amount",
+			"base_amount",
+			"net_rate",
+			"net_amount",
+			"warehouse",
+			"batch_no",
+			"serial_no",
+			"purchase_order",
+			"po_detail",
+		],
+	},
 	"Payment Entry": {
 		"date_field": "posting_date",
 		"party_field": "party",
@@ -406,6 +568,8 @@ def _existing_fields(doctype: str, fields: list[str]) -> list[str]:
 _CHILD_DOCTYPE = {
 	"Sales Order": "Sales Order Item",
 	"Sales Invoice": "Sales Invoice Item",
+	"Purchase Order": "Purchase Order Item",
+	"Purchase Invoice": "Purchase Invoice Item",
 	"Payment Entry": "Payment Entry Reference",
 }
 
@@ -547,6 +711,18 @@ def get_sales_invoices(**kwargs):
 
 @frappe.whitelist()
 @mobile_endpoint
+def get_purchase_orders(**kwargs):
+	return _list("Purchase Order")
+
+
+@frappe.whitelist()
+@mobile_endpoint
+def get_purchase_invoices(**kwargs):
+	return _list("Purchase Invoice")
+
+
+@frappe.whitelist()
+@mobile_endpoint
 def get_payment_entries(**kwargs):
 	return _list("Payment Entry")
 
@@ -561,6 +737,18 @@ def get_sales_order(**kwargs):
 @mobile_endpoint
 def get_sales_invoice(**kwargs):
 	return _detail("Sales Invoice")
+
+
+@frappe.whitelist()
+@mobile_endpoint
+def get_purchase_order(**kwargs):
+	return _detail("Purchase Order")
+
+
+@frappe.whitelist()
+@mobile_endpoint
+def get_purchase_invoice(**kwargs):
+	return _detail("Purchase Invoice")
 
 
 @frappe.whitelist()
