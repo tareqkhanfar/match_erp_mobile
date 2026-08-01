@@ -427,6 +427,9 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 		doc_data["supplier"] = party
 		if payload.get("price_list"):
 			doc_data["buying_price_list"] = payload["price_list"]
+		# Same reasoning as the sales branch: the client sends the exact
+		# per-item rate/discount, so buying Pricing Rules must not override it.
+		doc_data["ignore_pricing_rule"] = 1
 	else:
 		return fail(f"Unsupported doctype: {doctype}", f"نوع المستند غير مدعوم: {doctype}")
 
