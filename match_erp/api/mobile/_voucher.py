@@ -147,7 +147,11 @@ def _validate_payload(payload: dict, doctype: str, is_return: bool) -> tuple[boo
 	return True, "", ""
 
 
-def _build_items(items_payload: list[dict], schedule_date: str | None = None) -> list[dict]:
+def _build_items(
+	items_payload: list[dict],
+	schedule_date: str | None = None,
+	cost_center: str | None = None,
+) -> list[dict]:
 	rows = []
 	for line in items_payload:
 		base_rate = float(line.get("rate") or 0)
@@ -198,6 +202,10 @@ def _build_items(items_payload: list[dict], schedule_date: str | None = None) ->
 		if line_date:
 			row["delivery_date"] = line_date
 			row["schedule_date"] = line_date
+		# Cost center from the Dist POS Profile — set per line unless the line
+		# already carries one.
+		if cost_center and not line.get("cost_center"):
+			row["cost_center"] = cost_center
 		rows.append(row)
 	return rows
 
@@ -334,19 +342,39 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 		or payload.get("posting_date")
 	)
 
+	# Resolve the Dist POS Profile that tags this voucher, and the Cost Center
+	# configured on it. The cost center flows onto the header and every item
+	# line so GL postings are attributed to the branch/profile.
+	profile_name = resolve_profile_name(payload)
+	profile_cost_center = None
+	if profile_name:
+		profile_cost_center = frappe.db.get_value(
+			"Dist POS Profile", profile_name, "cost_center"
+		) or None
+	# An explicit cost_center in the payload wins over the profile default.
+	cost_center = payload.get("cost_center") or profile_cost_center
+
 	doc_data: dict = {
 		"doctype": doctype,
 		"company": payload["company"],
 		"currency": payload.get("currency"),
-		"items": _build_items(payload.get("items") or [], schedule_date=header_schedule_date),
+		"items": _build_items(
+			payload.get("items") or [],
+			schedule_date=header_schedule_date,
+			cost_center=cost_center,
+		),
 		"custom_mobile_local_id": local_id,
 	}
 
 	# Tag the voucher with the Dist POS Profile that created it from mobile.
 	# Empty stays empty → "created in ERPNext, not from mobile".
-	profile_name = resolve_profile_name(payload)
 	if profile_name and frappe.db.has_column(doctype, "custom_dist_pos_profile"):
 		doc_data["custom_dist_pos_profile"] = profile_name
+
+	# Header cost center (Sales Invoice / Sales Order support `cost_center`;
+	# ERPNext ignores the field on doctypes that don't have it).
+	if cost_center and frappe.db.has_column(doctype, "cost_center"):
+		doc_data["cost_center"] = cost_center
 
 	# Exchange rate: when the voucher currency matches the company currency
 	# the rate is 1.0 — pass it explicitly so ERPNext's validate doesn't
