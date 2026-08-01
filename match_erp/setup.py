@@ -61,7 +61,33 @@ def _field_specs():
 			"Mobile. Empty means it was created in ERPNext (not from mobile)."
 		),
 	}
-	return {dt: [dict(mobile_local_id), dict(dist_profile)] for dt in VOUCHER_DOCTYPES}
+	specs = {dt: [dict(mobile_local_id), dict(dist_profile)] for dt in VOUCHER_DOCTYPES}
+
+	# Item image gallery — a section with a table of additional images. The
+	# Item's own `image` field stays the PRIMARY image; these are extras.
+	specs["Item"] = [
+		{
+			"fieldname": "custom_item_images_section",
+			"label": "Item Images",
+			"fieldtype": "Section Break",
+			"insert_after": "image",
+			"collapsible": 1,
+			"is_system_generated": 1,
+		},
+		{
+			"fieldname": "custom_item_images",
+			"label": "Images",
+			"fieldtype": "Table",
+			"options": "Item Image",
+			"insert_after": "custom_item_images_section",
+			"is_system_generated": 1,
+			"description": (
+				"Additional images for this item. The Item's own Image field "
+				"above is the primary image."
+			),
+		},
+	]
+	return specs
 
 
 def ensure_custom_fields():
