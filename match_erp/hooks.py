@@ -27,6 +27,8 @@ fixtures = [
 					"Payment Entry-custom_dist_pos_profile",
 					"Item-custom_item_images_section",
 					"Item-custom_item_images",
+					"Expense-custom_mobile_local_id",
+					"Expense-custom_dist_pos_profile",
 				],
 			]
 		],

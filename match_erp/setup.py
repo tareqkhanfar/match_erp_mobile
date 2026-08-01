@@ -25,6 +25,10 @@ VOUCHER_DOCTYPES = [
 	"Payment Entry",
 ]
 
+# Doctypes owned by sibling apps that we also tag when they're installed.
+# "Expense" ships with match_utils — skipped silently when absent.
+OPTIONAL_VOUCHER_DOCTYPES = ["Expense"]
+
 
 def _field_specs():
 	mobile_local_id = {
@@ -62,6 +66,17 @@ def _field_specs():
 		),
 	}
 	specs = {dt: [dict(mobile_local_id), dict(dist_profile)] for dt in VOUCHER_DOCTYPES}
+
+	# Sibling-app doctypes (e.g. match_utils' Expense) get the same mobile
+	# tagging, but only when that app/doctype is actually installed.
+	for dt in OPTIONAL_VOUCHER_DOCTYPES:
+		if frappe.db.exists("DocType", dt):
+			opt_local_id = dict(mobile_local_id)
+			opt_profile = dict(dist_profile)
+			# These doctypes have no `title` field — anchor to a real one.
+			opt_local_id["insert_after"] = "amended_from"
+			opt_profile["insert_after"] = "custom_mobile_local_id"
+			specs[dt] = [opt_local_id, opt_profile]
 
 	# Item image gallery — a section with a table of additional images. The
 	# Item's own `image` field stays the PRIMARY image; these are extras.
