@@ -25,9 +25,10 @@ VOUCHER_DOCTYPES = [
 	"Payment Entry",
 ]
 
-# Doctypes owned by sibling apps that we also tag when they're installed.
-# "Expense" ships with match_utils — skipped silently when absent.
-OPTIONAL_VOUCHER_DOCTYPES = ["Expense"]
+# Doctypes tagged the same way but anchored after `amended_from` because they
+# have no `title` field. "Expense" ships with match_utils and is skipped
+# silently when that app isn't installed.
+OPTIONAL_VOUCHER_DOCTYPES = ["Expense", "Stock Entry"]
 
 
 def _field_specs():

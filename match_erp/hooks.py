@@ -29,6 +29,8 @@ fixtures = [
 					"Item-custom_item_images",
 					"Expense-custom_mobile_local_id",
 					"Expense-custom_dist_pos_profile",
+					"Stock Entry-custom_mobile_local_id",
+					"Stock Entry-custom_dist_pos_profile",
 				],
 			]
 		],
