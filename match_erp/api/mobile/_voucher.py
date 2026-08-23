@@ -213,6 +213,27 @@ def _build_items(
 	return rows
 
 
+def _profile_disables_rounding(profile_name: str | None, payload: dict) -> bool:
+	"""Should this voucher be created with rounding switched off?
+
+	An explicit `disable_rounded_total` in the payload wins; otherwise the
+	Dist POS Profile's `disable_round_amount` setting decides.
+	"""
+	supplied = payload.get("disable_rounded_total")
+	if supplied is not None:
+		return bool(int(supplied)) if str(supplied).isdigit() else bool(supplied)
+	if not profile_name:
+		return False
+	try:
+		return bool(
+			frappe.db.get_value(
+				"Dist POS Profile", profile_name, "disable_round_amount"
+			)
+		)
+	except Exception:
+		return False
+
+
 def resolve_profile_name(payload: dict) -> str | None:
 	"""Resolve the Dist POS Profile name that should tag a voucher.
 
@@ -393,6 +414,14 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 	# set above is what actually drives the stock movement.
 	if warehouse and frappe.db.has_column(doctype, "set_warehouse"):
 		doc_data["set_warehouse"] = warehouse
+
+	# Rounding. When the profile has "Disable Round Amount" ticked, tick
+	# ERPNext's own `disable_rounded_total` so the voucher keeps its exact
+	# grand total instead of being rounded to the nearest whole unit.
+	if _profile_disables_rounding(profile_name, payload) and frappe.db.has_column(
+		doctype, "disable_rounded_total"
+	):
+		doc_data["disable_rounded_total"] = 1
 
 	# Exchange rate: when the voucher currency matches the company currency
 	# the rate is 1.0 — pass it explicitly so ERPNext's validate doesn't

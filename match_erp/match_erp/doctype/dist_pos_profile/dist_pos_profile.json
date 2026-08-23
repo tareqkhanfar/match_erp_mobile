@@ -33,6 +33,7 @@
   "column_break_vrules",
   "allow_discount_change",
   "validate_stock_on_save",
+  "disable_round_amount",
   "show_customer_balance_on_voucher",
   "tab_ui",
   "section_ui",
@@ -240,6 +241,13 @@
    "fieldname": "validate_stock_on_save",
    "fieldtype": "Check",
    "label": "Validate Stock on Save"
+  },
+  {
+   "default": "0",
+   "description": "When enabled, vouchers pushed from mobile are created with Disable Rounded Total ticked, so ERPNext keeps the exact total instead of rounding it.",
+   "fieldname": "disable_round_amount",
+   "fieldtype": "Check",
+   "label": "Disable Round Amount"
   },
   {
    "default": "0",

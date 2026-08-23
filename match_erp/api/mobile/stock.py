@@ -496,8 +496,11 @@ def create_stock_entry(**kwargs):
 		"company": payload["company"],
 		"items": [],
 	}
-	if purpose:
-		doc_data["purpose"] = purpose
+	# NOTE: we deliberately do NOT send `purpose`. ERPNext derives it from
+	# stock_entry_type (set_purpose_for_stock_entry), and if `purpose` IS set
+	# its set_stock_entry_type() replaces our chosen type with the *standard*
+	# type for that purpose — silently discarding a custom type like
+	# "Van Loading". Sending only the type keeps the user's choice intact.
 	if from_wh:
 		doc_data["from_warehouse"] = from_wh
 	if to_wh:
@@ -533,8 +536,15 @@ def create_stock_entry(**kwargs):
 				row[f] = line[f]
 		if line.get("conversion_factor"):
 			row["conversion_factor"] = float(line["conversion_factor"])
+		# Incoming stock needs a valuation. Without a rate (and with no
+		# valuation history for the item) ERPNext throws "Valuation Rate
+		# Missing", so pass through whatever the client supplied and let it
+		# opt into a zero valuation explicitly.
 		if line.get("basic_rate") is not None:
 			row["basic_rate"] = float(line.get("basic_rate") or 0)
+			row["set_basic_rate_manually"] = 1
+		if line.get("allow_zero_valuation_rate"):
+			row["allow_zero_valuation_rate"] = 1
 		doc_data["items"].append(row)
 
 	doc = frappe.get_doc(doc_data)
