@@ -234,6 +234,43 @@ def _profile_disables_rounding(profile_name: str | None, payload: dict) -> bool:
 		return False
 
 
+# Maps the client's `voucher_type` registry id onto the Dist POS Profile
+# checkbox that controls whether it's available at all.
+_VISIBILITY_FLAGS = {
+	"sales_order": "show_sales_order",
+	"sales_invoice": "show_sales_invoice",
+	"sales_return": "show_sales_return",
+	"purchase_order": "show_purchase_order",
+	"purchase_invoice": "show_purchase_invoice",
+	"purchase_return": "show_purchase_return",
+	"payment_entry": "show_payment_entry",
+	"payment_receipt": "show_payment_receipt",
+	"expense": "show_expense",
+	"stock_entry": "show_stock_entry",
+}
+
+
+def voucher_type_allowed(voucher_type: str | None, profile_name: str | None) -> bool:
+	"""Is this voucher type switched on for the profile?
+
+	Defence in depth: the app hides disabled types, but an older build (or a
+	crafted request) must not be able to post one anyway. Unknown types and
+	missing flags default to allowed so a new type is never locked out by an
+	un-migrated profile.
+	"""
+	flag = _VISIBILITY_FLAGS.get(voucher_type or "")
+	if not flag or not profile_name:
+		return True
+	try:
+		if not frappe.db.has_column("Dist POS Profile", flag):
+			return True
+		value = frappe.db.get_value("Dist POS Profile", profile_name, flag)
+	except Exception:
+		return True
+	# NULL means the profile predates the field — treat as visible.
+	return True if value is None else bool(value)
+
+
 def resolve_profile_name(payload: dict) -> str | None:
 	"""Resolve the Dist POS Profile name that should tag a voucher.
 
@@ -385,6 +422,12 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 	# An explicit value in the payload wins over the profile default.
 	cost_center = payload.get("cost_center") or profile_cost_center
 	warehouse = payload.get("warehouse") or profile_warehouse
+
+	if not voucher_type_allowed(payload.get("voucher_type"), profile_name):
+		return fail(
+			"This voucher type is disabled for your profile.",
+			"نوع السند هذا معطّل في ملفك.",
+		)
 
 	doc_data: dict = {
 		"doctype": doctype,

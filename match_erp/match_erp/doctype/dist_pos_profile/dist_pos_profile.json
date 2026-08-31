@@ -80,7 +80,20 @@
   "letter_head",
   "column_break_pos_print",
   "tc_name",
-  "select_print_heading"
+  "select_print_heading",
+  "tab_vouchers",
+  "section_voucher_visibility",
+  "show_sales_order",
+  "show_sales_invoice",
+  "show_sales_return",
+  "show_purchase_order",
+  "show_purchase_invoice",
+  "column_break_vouchers",
+  "show_purchase_return",
+  "show_payment_entry",
+  "show_payment_receipt",
+  "show_expense",
+  "show_stock_entry"
  ],
  "fields": [
   {
@@ -509,6 +522,81 @@
    "fieldtype": "Link",
    "label": "Print Heading",
    "options": "Print Heading"
+  },
+  {
+   "fieldname": "tab_vouchers",
+   "fieldtype": "Tab Break",
+   "label": "Vouchers"
+  },
+  {
+   "fieldname": "section_voucher_visibility",
+   "fieldtype": "Section Break",
+   "label": "Visible Voucher Types",
+   "description": "Untick a voucher type to hide it in Match ERP Mobile. Hidden types disappear from the vouchers hub and cannot be created."
+  },
+  {
+   "fieldname": "show_sales_order",
+   "fieldtype": "Check",
+   "label": "Sales Order",
+   "default": "1"
+  },
+  {
+   "fieldname": "show_sales_invoice",
+   "fieldtype": "Check",
+   "label": "Sales Invoice",
+   "default": "1"
+  },
+  {
+   "fieldname": "show_sales_return",
+   "fieldtype": "Check",
+   "label": "Sales Return",
+   "default": "1"
+  },
+  {
+   "fieldname": "show_purchase_order",
+   "fieldtype": "Check",
+   "label": "Purchase Order",
+   "default": "1"
+  },
+  {
+   "fieldname": "show_purchase_invoice",
+   "fieldtype": "Check",
+   "label": "Purchase Invoice",
+   "default": "1"
+  },
+  {
+   "fieldname": "column_break_vouchers",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "show_purchase_return",
+   "fieldtype": "Check",
+   "label": "Purchase Return",
+   "default": "1"
+  },
+  {
+   "fieldname": "show_payment_entry",
+   "fieldtype": "Check",
+   "label": "Payment Entry",
+   "default": "1"
+  },
+  {
+   "fieldname": "show_payment_receipt",
+   "fieldtype": "Check",
+   "label": "Payment Receipt",
+   "default": "1"
+  },
+  {
+   "fieldname": "show_expense",
+   "fieldtype": "Check",
+   "label": "Expense",
+   "default": "1"
+  },
+  {
+   "fieldname": "show_stock_entry",
+   "fieldtype": "Check",
+   "label": "Stock Entry",
+   "default": "1"
   }
  ],
  "index_web_pages_for_search": 0,
