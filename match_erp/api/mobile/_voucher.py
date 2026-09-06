@@ -24,6 +24,7 @@ The mobile client sends a generic payload for every transactional voucher:
                 "uom":                "Carton",
                 "conversion_factor":  12,
                 "qty":                2,
+                "bonus_qty":          0,     # of `qty`, how many are free
                 "rate":               120.0,
                 "discount_percentage": 0,
                 "discount_amount":    0
@@ -38,6 +39,9 @@ Responsibilities:
 - Map `party` → `customer` or `supplier` depending on doctype.
 - Handle Sales Order's `transaction_date` vs `posting_date`.
 - Handle `is_paid` + `mode_of_payment` on Sales/Purchase Invoice.
+- Split a line carrying `bonus_qty` into a charged row and a zero-rate row
+  flagged `is_free_item`, so stock moves for the full quantity while only
+  the charged part is billed.
 - For returns: set `is_return = 1`, send negative qty, and optionally
   `return_against`. When an original invoice IS given we also set
   `update_outstanding_for_self = 0`, so the credit note settles that invoice
@@ -160,9 +164,26 @@ def _build_items(
 		disc_pct = float(line.get("discount_percentage") or 0)
 		disc_amt = float(line.get("discount_amount") or 0)
 
+		# Bonus / free goods. The client sends the TOTAL quantity plus how
+		# many of those are free. We split that into two rows — the charged
+		# portion at its price, and the bonus at zero flagged `is_free_item`
+		# — which is exactly the shape ERPNext's own pricing rules produce,
+		# so stock moves for the full quantity while only the charged part
+		# is billed. Sent as one row, the free units would be invisible.
+		total_qty = float(line.get("qty") or 0)
+		bonus_qty = abs(float(line.get("bonus_qty") or 0))
+		# Never let a bonus exceed the line: that would invert the sign of
+		# the charged row and credit the customer.
+		if bonus_qty > abs(total_qty):
+			bonus_qty = abs(total_qty)
+		# Returns carry negative quantities; keep the split on the same side.
+		if total_qty < 0:
+			bonus_qty = -bonus_qty
+		charged_qty = total_qty - bonus_qty
+
 		row = {
 			"item_code": line["item_code"],
-			"qty": float(line.get("qty") or 0),
+			"qty": charged_qty,
 			"uom": line.get("uom") or None,
 		}
 
@@ -210,7 +231,27 @@ def _build_items(
 			row["cost_center"] = cost_center
 		if warehouse and not line.get("warehouse"):
 			row["warehouse"] = warehouse
-		rows.append(row)
+
+		# Only emit the charged row when something is actually charged — an
+		# all-bonus line has nothing to bill.
+		if charged_qty:
+			rows.append(row)
+
+		if bonus_qty:
+			free_row = dict(row)
+			free_row["qty"] = bonus_qty
+			free_row["rate"] = 0.0
+			free_row["is_free_item"] = 1
+			# A free line has no price to discount, and carrying the parent's
+			# price_list_rate would make ERPNext show a 100% discount.
+			for f in (
+				"price_list_rate",
+				"base_price_list_rate",
+				"discount_percentage",
+				"discount_amount",
+			):
+				free_row.pop(f, None)
+			rows.append(free_row)
 	return rows
 
 

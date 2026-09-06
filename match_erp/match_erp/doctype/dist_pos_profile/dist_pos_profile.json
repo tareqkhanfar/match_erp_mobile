@@ -33,6 +33,7 @@
   "allow_rate_change",
   "column_break_vrules",
   "allow_discount_change",
+  "enable_bonus_qty",
   "validate_stock_on_save",
   "disable_round_amount",
   "show_customer_balance_on_voucher",
@@ -259,6 +260,13 @@
    "fieldname": "allow_discount_change",
    "fieldtype": "Check",
    "label": "Allow User to Edit Discount"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_bonus_qty",
+   "fieldtype": "Check",
+   "label": "Enable Bonus Quantity",
+   "description": "Adds a Bonus field when adding items to a Sales Invoice. Part of the quantity is then given free: the charged portion keeps its price and the bonus portion is billed at zero."
   },
   {
    "default": "0",
