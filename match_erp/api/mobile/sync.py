@@ -260,6 +260,12 @@ def get_items(**kwargs):
 		"item_name",
 		"item_group",
 		"stock_uom",
+		# Per-transaction default units. ERPNext lets an item be sold in one
+		# unit (e.g. Carton) and bought in another (Pallet) while stock is
+		# kept in a third. The client picks the right one per voucher type
+		# and falls back to stock_uom when unset.
+		"sales_uom",
+		"purchase_uom",
 		"description",
 		"image",
 		"standard_rate",
