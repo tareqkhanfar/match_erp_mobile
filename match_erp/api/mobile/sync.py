@@ -3,7 +3,13 @@
 All sync endpoints share the same contract:
 
     Input:  { "modified_after": "ISO-8601" | null, "limit": int,
-              "price_list": str | null, "warehouse": str | null }
+              "price_list": str | null, "buying_price_list": str | null,
+              "warehouse": str | null }
+
+`get_items` returns BOTH rates: `price_list_rate` from `price_list` (the
+selling list) and `buying_rate` from `buying_price_list`. They're separate
+lists in ERPNext, and a purchase voucher priced off the sales list would be
+wrong.
     Output (data):
             { "items": [...], "has_more": bool,
               "next_cursor": "ISO-8601" | null }
@@ -247,11 +253,66 @@ def _profile_item_group_filter() -> list | None:
 	return [["item_group", "in", list(all_groups)]]
 
 
+def _stock_uom_price_map(
+	price_list: str | None, rows: list[dict], item_codes: tuple
+) -> dict[str, float]:
+	"""{item_code: rate} for the stock UOM on `price_list`.
+
+	Per-UOM prices are returned separately via `get_item_uom_conversions`.
+	Here we only want the stock-UOM price, which in ERPNext is the row where
+	`Item Price.uom` is either NULL or equal to the item's stock UOM. Without
+	that filter we'd accidentally pick up an alternate-UOM row (e.g. Carton)
+	and use it as the per-piece price.
+	"""
+	price_map: dict[str, float] = {}
+	if not price_list or not item_codes:
+		return price_map
+
+	stock_uoms = {r["item_code"]: r.get("stock_uom") for r in rows}
+	distinct_stock_uoms = {u for u in stock_uoms.values() if u}
+	uom_filter_sql = ""
+	uom_params: list[Any] = []
+	if distinct_stock_uoms:
+		uom_filter_sql = "AND (uom IS NULL OR uom = '' OR uom IN %s)"
+		uom_params.append(tuple(distinct_stock_uoms))
+
+	price_rows = frappe.db.sql(
+		f"""
+		SELECT item_code, uom, price_list_rate
+		FROM `tabItem Price`
+		WHERE price_list = %s
+		  AND item_code IN %s
+		  {uom_filter_sql}
+		  AND (valid_from IS NULL OR valid_from <= CURDATE())
+		  AND (valid_upto IS NULL OR valid_upto >= CURDATE())
+		ORDER BY valid_from DESC
+		""",
+		(price_list, tuple(item_codes), *uom_params),
+		as_dict=True,
+	)
+	# Prefer a row whose UOM matches the item's stock UOM exactly; fall back
+	# to a NULL/blank-UOM row when nothing better is found.
+	for pr in price_rows:
+		code = pr["item_code"]
+		rate = float(pr["price_list_rate"] or 0)
+		row_uom = pr.get("uom") or ""
+		stock_uom = stock_uoms.get(code) or ""
+		if code in price_map:
+			continue
+		if row_uom and stock_uom and row_uom == stock_uom:
+			price_map[code] = rate
+			continue
+		if not row_uom:
+			price_map.setdefault(code, rate)
+	return price_map
+
+
 @frappe.whitelist()
 @mobile_endpoint
 def get_items(**kwargs):
 	modified_after, limit, body = _parse_sync_args()
 	price_list: str | None = body.get("price_list") or None
+	buying_price_list: str | None = body.get("buying_price_list") or None
 	warehouse: str | None = body.get("warehouse") or None
 
 	fields = [
@@ -290,53 +351,14 @@ def get_items(**kwargs):
 
 	item_codes = [r["item_code"] for r in rows]
 
-	# --- price_list_rate ------------------------------------------------------
-	# Per-UOM prices are returned separately via `get_item_uom_conversions`.
-	# Here we only want the stock-UOM price, which in ERPNext is the row
-	# where `Item Price.uom` is either NULL or equal to the item's stock UOM.
-	# Without that filter we'd accidentally pick up an alternate-UOM row
-	# (e.g. Carton) and use it as the per-piece price.
-	price_map: dict[str, float] = {}
-	if price_list:
-		# Build {item_code: stock_uom} so we can match per row.
-		stock_uoms = {r["item_code"]: r.get("stock_uom") for r in rows}
-		distinct_stock_uoms = {u for u in stock_uoms.values() if u}
-		uom_filter_sql = ""
-		uom_params: list[Any] = []
-		if distinct_stock_uoms:
-			uom_filter_sql = "AND (uom IS NULL OR uom = '' OR uom IN %s)"
-			uom_params.append(tuple(distinct_stock_uoms))
-
-		price_rows = frappe.db.sql(
-			f"""
-			SELECT item_code, uom, price_list_rate
-			FROM `tabItem Price`
-			WHERE price_list = %s
-			  AND item_code IN %s
-			  {uom_filter_sql}
-			  AND (valid_from IS NULL OR valid_from <= CURDATE())
-			  AND (valid_upto IS NULL OR valid_upto >= CURDATE())
-			ORDER BY valid_from DESC
-			""",
-			(price_list, tuple(item_codes), *uom_params),
-			as_dict=True,
-		)
-		# Prefer a row whose UOM matches the item's stock UOM exactly;
-		# fall back to a NULL/blank-UOM row when nothing better is found.
-		for p in price_rows:
-			code = p["item_code"]
-			rate = float(p["price_list_rate"] or 0)
-			row_uom = p.get("uom") or ""
-			stock_uom = stock_uoms.get(code) or ""
-			if code in price_map:
-				continue
-			# Always accept the exact stock-UOM match.
-			if row_uom and stock_uom and row_uom == stock_uom:
-				price_map[code] = rate
-				continue
-			# Fall back to NULL/blank UOM only if no exact match seen yet.
-			if not row_uom:
-				price_map.setdefault(code, rate)
+	# Selling and buying prices are separate lists in ERPNext. Pull both so a
+	# purchase voucher isn't priced off the sales list.
+	price_map = _stock_uom_price_map(price_list, rows, tuple(item_codes))
+	buying_map = (
+		_stock_uom_price_map(buying_price_list, rows, tuple(item_codes))
+		if buying_price_list and buying_price_list != price_list
+		else price_map
+	)
 
 	# --- actual_qty -----------------------------------------------------------
 	qty_map: dict[str, float] = {}
@@ -368,6 +390,7 @@ def get_items(**kwargs):
 	for r in rows:
 		code = r["item_code"]
 		r["price_list_rate"] = price_map.get(code, 0.0)
+		r["buying_rate"] = buying_map.get(code, 0.0)
 		r["actual_qty"] = qty_map.get(code, 0.0)
 		# `image` arrives as a relative `/files/...` path; rewrite to absolute
 		# so the mobile client can render it without rebuilding the URL.

@@ -16,6 +16,7 @@
   "section_business",
   "default_doc_type",
   "selling_price_list",
+  "buying_price_list",
   "default_warehouse",
   "column_break_business",
   "default_customer",
@@ -157,8 +158,18 @@
   {
    "fieldname": "selling_price_list",
    "fieldtype": "Link",
-   "label": "Default Price List",
-   "options": "Price List"
+   "label": "Default Selling Price List",
+   "options": "Price List",
+   "description": "Used to price Sales Orders, Sales Invoices and sales returns.",
+   "link_filters": "[[\"Price List\",\"selling\",\"=\",1]]"
+  },
+  {
+   "fieldname": "buying_price_list",
+   "fieldtype": "Link",
+   "label": "Default Buying Price List",
+   "options": "Price List",
+   "description": "Used to price Purchase Orders, Purchase Invoices and purchase returns. Without it, purchases fall back to whatever ERPNext resolves for the supplier.",
+   "link_filters": "[[\"Price List\",\"buying\",\"=\",1]]"
   },
   {
    "fieldname": "default_warehouse",

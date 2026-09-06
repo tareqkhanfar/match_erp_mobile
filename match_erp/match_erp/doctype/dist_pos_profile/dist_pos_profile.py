@@ -98,6 +98,7 @@ class DistPOSProfile(Document):
 _SETTING_FIELDS = [
 	"default_doc_type",
 	"selling_price_list",
+	"buying_price_list",
 	"default_warehouse",
 	"default_customer",
 	"currency",
@@ -292,6 +293,7 @@ def _default_settings() -> dict:
 		"has_profile": False,
 		"default_doc_type": "Sales Invoice",
 		"selling_price_list": "",
+		"buying_price_list": "",
 		"default_warehouse": "",
 		"default_customer": "",
 		"currency": "",
