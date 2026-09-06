@@ -38,8 +38,12 @@ Responsibilities:
 - Map `party` → `customer` or `supplier` depending on doctype.
 - Handle Sales Order's `transaction_date` vs `posting_date`.
 - Handle `is_paid` + `mode_of_payment` on Sales/Purchase Invoice.
-- For returns: set `is_return = 1` and `return_against`; the client must
-  send negative qty.
+- For returns: set `is_return = 1`, send negative qty, and optionally
+  `return_against`. When an original invoice IS given we also set
+  `update_outstanding_for_self = 0`, so the credit note settles that invoice
+  instead of carrying its own balance — matching what ERPNext does when a
+  return is raised from the invoice itself. Without `return_against` the
+  document is a standalone credit/debit note.
 """
 
 from __future__ import annotations
@@ -77,12 +81,9 @@ def _validate_payload(payload: dict, doctype: str, is_return: bool) -> tuple[boo
 	if not payload.get("company"):
 		return False, "company is required", "الشركة مطلوبة"
 
-	if is_return and not payload.get("return_against"):
-		return (
-			False,
-			"return_against is required for return documents",
-			"يجب تحديد المستند الأصلي للمرتجع",
-		)
+	# `return_against` is OPTIONAL. A standalone credit/debit note (goods
+	# refused on delivery, a write-off with no single invoice behind it) is
+	# valid in ERPNext — is_return alone is what makes it a return.
 
 	items = payload.get("items") or []
 	if not isinstance(items, list) or not items:
@@ -542,7 +543,20 @@ def create_voucher(doctype: str, payload: dict, is_return: bool = False) -> dict
 	# --- Return handling ----------------------------------------------------
 	if is_return:
 		doc_data["is_return"] = 1
-		doc_data["return_against"] = payload["return_against"]
+		return_against = payload.get("return_against")
+		if return_against:
+			doc_data["return_against"] = return_against
+			# Settle the ORIGINAL invoice rather than leaving the credit note
+			# carrying its own balance. This reproduces what ERPNext does
+			# when you raise a return from the invoice itself: the original's
+			# outstanding drops (and reads "Credit Note Issued" once fully
+			# returned) while the credit note itself sits at zero. With the
+			# field left at its default of 1 the two documents stay separate
+			# and the original still looks unpaid. Overridable per request.
+			supplied = payload.get("update_outstanding_for_self")
+			doc_data["update_outstanding_for_self"] = (
+				1 if supplied else 0
+			) if supplied is not None else 0
 
 	# --- Create -------------------------------------------------------------
 	doc = frappe.get_doc(doc_data)
